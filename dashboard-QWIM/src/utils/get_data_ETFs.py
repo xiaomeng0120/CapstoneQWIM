@@ -39,7 +39,7 @@ To fetch ETF data and save to CSV:
 import sys
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -193,22 +193,25 @@ def main() -> None:
     """
     # Define ETF tickers to retrieve
     etf_tickers = [
-        "IVV",   # iShares Core S&P 500 ETF
-        "IJH",   # iShares Core S&P Mid-Cap ETF
+        "SPY",   # SPDR S&P 500 ETF
         "IWM",   # iShares Russell 2000 ETF
         "EFA",   # iShares MSCI EAFE ETF
         "EEM",   # iShares MSCI Emerging Markets ETF
         "AGG",   # iShares Core U.S. Aggregate Bond ETF
-        "SPTL",  # SPDR Portfolio Long Term Treasury ETF
+        "LQD",   # iShares iBoxx $ Investment Grade Corporate Bond ETF
         "HYG",   # iShares iBoxx $ High Yield Corporate Bond ETF
-        "SPBO",  # SPDR Portfolio Corporate Bond ETF
-        "IYR",   # iShares U.S. Real Estate ETF
-        "DBC",   # Invesco DB Commodity Index Tracking Fund
+        "TLT",   # iShares 20+ Year Treasury Bond ETF
         "GLD",   # SPDR Gold Shares
+        "VNQ",   # Vanguard Real Estate ETF
+        "DBC",   # Invesco DB Commodity Index Tracking Fund
+        "VT",    # Vanguard Total World Stock ETF
+        "XLE",   # Energy Select Sector SPDR Fund
+        "XLK",   # Technology Select Sector SPDR Fund
+        "UUP",   # Invesco DB US Dollar Index Bullish Fund
     ]
     
-    # Define date range: January 1, 2012 to present
-    start_date = "2012-01-01"
+    # Define date range: July 1, 2008 to present
+    start_date = "2008-07-01"
     # No need to specify end_date as it defaults to today
     
     try:
@@ -231,7 +234,8 @@ def main() -> None:
         raw_data_dir.mkdir(parents=True, exist_ok=True)
         
         # Get ETF data with specified date range
-        df = get_etf_data(tickers=etf_tickers, start_date=start_date)
+        yesterday = (datetime.now() - timedelta(1)).date()
+        df = get_etf_data(tickers=etf_tickers, start_date=start_date, end_date=yesterday)
         
         # Check if we have data
         if df.empty:

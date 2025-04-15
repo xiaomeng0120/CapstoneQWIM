@@ -41,6 +41,10 @@ from plotly.subplots import make_subplots
 from shiny import module, reactive, render, ui
 from shinywidgets import render_plotly, output_widget, render_widget
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 
 @module.ui
 def inputs_ui():
@@ -74,99 +78,83 @@ def inputs_ui():
     apply_filters : Function that processes the filter selections
     """
     return ui.page_fluid(
-        ui.h2("Data Selection and Filtering"),
-        ui.layout_sidebar(
-            ui.sidebar(
-                ui.h3("Time Period"),
-                ui.input_select(
-                    "ID_preset_time_periods",
-                    "Preset Time Periods:",
-                    {
-                        "custom": "Custom",
-                        "1y": "Last 1 Year",
-                        "5y": "Last 5 Years",
-                        "10y": "Last 10 Years",
-                        "ytd": "Year to Date",
-                    },
-                    selected="5y",
-                ),
-                ui.input_date_range(
-                    "ID_custom_date_range",
-                    "Custom Date Range:",
-                    start="2018-01-01",
-                    end="2023-01-01",
-                ),
-                ui.h3("Series Selection"),
-                ui.input_checkbox_group(
-                    "ID_selected_series",
-                    "Select Time Series:",
-                    [],
-                    selected=[],
-                ),
-                ui.h3("Date Range"),
-                ui.input_date_range(
-                    "ID_date_range",
-                    "Select Date Range:",
-                    start="2002-01-01",
-                    end="2025-03-31",
-                    format="yyyy-mm-dd",
-                    separator=" to ",
-                ),
-                ui.input_action_button(
-                    "ID_apply_filters", 
-                    "Apply Filters", 
-                    class_="btn-primary",
-                ),
-                ui.hr(),
-                ui.h3("Quick Selections"),
-                ui.input_action_button(
-                    "ID_select_all", 
-                    "Select All Series", 
-                    class_="btn-outline-secondary",
-                ),
-                ui.input_action_button(
-                    "ID_clear_selection", 
-                    "Clear Selection", 
-                    class_="btn-outline-secondary",
-                ),
-                ui.hr(),
-                ui.h4("Presets"),
-                ui.input_select(
-                    "ID_time_period_preset",
-                    "Time Period Preset:",
-                    {
-                        "all": "All Data",
-                        "1y": "Last Year",
-                        "5y": "Last 5 Years",
-                        "10y": "Last 10 Years",
-                        "ytd": "Year to Date",
-                    },
-                    selected="all",
-                ),
-                ui.input_select(
-                    "ID_series_preset",
-                    "Series Preset:",
-                    {
-                        "none": "None",
-                        "first3": "First 3 Series",
-                        "trending": "Trending Up Series",
-                        "volatile": "Most Volatile Series",
-                    },
-                    selected="none",
-                ),
-                ui.input_action_button(
-                    "ID_apply_presets", 
-                    "Apply Presets", 
-                    class_="btn-outline-info",
-                ),
+        ui.h2("ETF Asset Visualization"),
+        ui.navset_card_tab(
+            ui.nav_panel(
+                "Investment Pool",
+                    ui.h4("ETFs Basic Information"),
+                    ui.h6("We have selected the following 15 representative ETFs covering multiple asset classes such as stocks, bonds, commodities and real estate:"),
+                    ui.output_data_frame("ETF_pool_table"),  # 改为使用widget输出
+                    ui.tags.style("""
+                        .datagrid table { 
+                            font-size: 0.85em;
+                            line-height: 1.2;
+                        }
+                        .datagrid th {
+                            padding: 4px 8px;
+                        }
+                        .datagrid td {
+                            padding: 3px 6px;
+                        }
+                    """), 
+                    ui.hr(),  # Divider between tables
+                    ui.h4("ETFs Daily Close Price Overview"),  # New Table Title
+                    ui.h6("Choose the following time range to explore more!"),
+                    ui.input_date_range(  # Time range selection for the new table
+                        "new_data_date_range",
+                        "Select Time Range:",
+                        start="2025-01-01",
+                        end="2025-03-01",
+                    ),
+                    ui.output_data_frame("new_data_table"),  # New Table to display the selected data
+                    ui.tags.style("""
+                        .datagrid table { 
+                            font-size: 0.85em;
+                            line-height: 1.2;
+                        }
+                        .datagrid th {
+                            padding: 4px 8px;
+                        }
+                        .datagrid td {
+                            padding: 3px 6px;
+                        }
+                    """)
             ),
-            ui.h4("Selected Series Overview"),
-            output_widget("output_ID_overview_plot"),
-            ui.h4("Series Statistics"),
-            ui.output_table("output_ID_series_stats"),
-            ui.h4("Selected Data"),
-            ui.output_data_frame("output_ID_selected_data_preview"),
-        ),
+            ui.nav_panel(
+                "ETF Close Price Trends",  # Second sub-tab
+                ui.layout_sidebar(
+                    ui.sidebar(
+                        ui.input_selectize(
+                            "selected_etfs", 
+                            "Select ETFs to visualize:", 
+                            choices=["SPY", "IWM", "EFA", "EEM", "AGG", "LQD", "HYG", "TLT", "GLD", "VNQ", "DBC", "VT", "XLE", "XLK", "UUP"], 
+                            selected=["EFA", "IWM", "HYG", "GLD", "LQD", "VNQ"],
+                            multiple=True,  # Enable multi-selection
+                            width="100%",
+                        ),
+                        ui.input_date_range(
+                            "date_range", 
+                            "Select Date Range:", 
+                            start="2008-07-01", 
+                            end="2025-03-01",
+                        ),
+                        # apply_filters
+                        ui.input_action_button(
+                            "ID_apply_filters",  # 按钮 ID
+                            "Apply Filters",  # 按钮标签
+                            class_="btn-primary"  # 按钮样式
+                        ), 
+                    ),
+                    ui.h4("ETFs Close Price Overview"),
+                    ui.h6("Choose the following time range and select ETFs to explore more!"),
+                    output_widget("output_ID_overview_plot"),   # 在这里渲染图表
+                ),
+            )
+
+            # Other sub tab...
+
+
+        )
     )
 
 
@@ -216,6 +204,99 @@ def inputs_server(input, output, session, data_r, series_names_r):
     # Initialize reactive values
     filtered_data = reactive.Value(None)
     selected_series = reactive.Value([])
+
+    # 普通的函数，用来更新ETF表格数据
+    def _update_etf_table():
+        """Return ETF data to be rendered in a table"""
+        etf_data = {
+            "Ticker": ["SPY", "IWM", "EFA", "EEM", "AGG", "LQD", "HYG", "TLT", "GLD", "VNQ", "DBC", "VT", "XLE", "XLK", "UUP"],
+            "ETF Full Name": ["SPDR S&P 500 ETF", "iShares Russell 2000 ETF", "iShares MSCI EAFE ETF", "iShares MSCI Emerging Markets ETF", "iShares Core US Aggregate Bond ETF", "iShares iBoxx $ Investment Grade Corporate Bond ETF", "iShares iBoxx $ High Yield Corporate Bond ETF", "iShares 20+ Year Treasury Bond ETF", "SPDR Gold Shares", "Vanguard Real Estate ETF", "Invesco DB Commodity Index Tracking Fund", "Vanguard Total World Stock ETF", "Energy Select Sector SPDR Fund", "Technology Select Sector SPDR Fund", "Invesco DB US Dollar Index Bullish Fund"],
+            "Type": ["Large-Cap Equity", "Small-Cap Equity", "International Equity", "Emerging Markets", "Aggregate Bonds", "Investment Grade Corporate Bonds", "High Yield Bonds", "Long-Term Bonds", "Commodities", "REITs", "Commodities", "Global Stock", "Energy Sector", "Technology Sector", "USD Index"]
+        }
+        return pd.DataFrame(etf_data)
+    
+    # New data section
+    def _load_new_data():
+        """Load the new dataset from the raw/etf_data directory."""
+        data_path = Path("data/raw/etf_data.csv")
+        if not data_path.exists():
+            print(f"Data file not found at {data_path}")  # Print data file error
+            raise FileNotFoundError(f"Data file not found at {data_path}")
+        
+        # Load the data using pandas (or polars if necessary)
+        df = pd.read_csv(data_path)
+        print(f"Loaded ETF data: \n{df.head()}")  # Print the first few rows of the loaded data
+
+        # Ensure 'Date' column is in datetime format, handle errors if any
+        try:
+            df["Date"] = pd.to_datetime(df["Date"], errors='raise')  # Ensure 'Date' column is datetime
+            print(f"Date column converted successfully. Data types:\n{df.dtypes}")  # Check data types
+        except Exception as e:
+            print(f"Error while converting Date column: {e}")
+            raise
+        
+        # Check if 'Date' column is correctly converted
+        print(f"Date column type: {df['Date'].dtype}")
+        
+        # Print first few rows to confirm
+        print(df.head())
+        
+        return df
+    
+    # 在服务器端渲染表格
+    @output
+    @render.data_frame
+    def ETF_pool_table():
+        """Render the interactive ETF data table"""
+        df = _update_etf_table()
+        print(f"ETF Pool Table Data: \n{df.head()}")  # Print ETF table data
+        
+        return render.DataGrid(
+            df,
+            row_selection_mode="none",
+            filters=False,  # 启用列过滤
+            summary=True,  # 显示统计摘要
+            height="400px",
+            width="100%"
+        )
+    
+    @output
+    @render.data_frame
+    def new_data_table():
+        """Render the new data table based on selected time range."""
+        try:
+            # Load the new data from the file
+            df = _load_new_data()
+            # Apply time range filter
+            start_date = pd.to_datetime(input.new_data_date_range()[0])  # 将 start_date 转换为 datetime64
+            end_date = pd.to_datetime(input.new_data_date_range()[1])  # 将 end_date 转换为 datetime64
+            print(f"Selected date range: {start_date} to {end_date}")
+            df_filtered = df[(df["Date"] >= start_date) & (df["Date"] <= end_date)]
+            print(f"Filtered Data:\n{df_filtered.head()}")  # Print filtered data
+
+            # 格式化日期列，只保留日期部分
+            df_filtered["Date"] = df_filtered["Date"].dt.strftime('%Y-%m-%d')
+
+            # 格式化每列数据的小数位数
+            df_filtered = df_filtered.round(2)  # 例如保留4位小数
+            
+            # Return the filtered data as a DataFrame
+            return render.DataGrid(
+                df_filtered,
+                row_selection_mode="none",
+                filters=False,  # Enable column filtering
+                summary=True,  # Display summary statistics
+                height="400px",
+                width="100%"
+            )
+        except Exception as e:
+            # Log the error and return an empty DataFrame
+            logger.error(f"Error loading data: {str(e)}")
+            
+            # Return an empty DataFrame with the expected structure
+            return pd.DataFrame({"Date": [], "Ticker": [], "Value": []})
+    
+    # Continue with other effects...
     
     @reactive.effect
     def _update_series_options():
@@ -341,69 +422,43 @@ def inputs_server(input, output, session, data_r, series_names_r):
         
         # Apply the filters after updating selections
         apply_filters()
-    
+        
     @reactive.calc
     @reactive.event(input.ID_apply_filters)
     def apply_filters():
-        """Apply data filters based on user selections.
-        
-        This function filters the data based on the selected date range and series,
-        and updates the reactive values for filtered data and selected series.
-        
-        Returns
-        -------
-        dict
-            Dictionary containing:
-            - filtered_data: polars.DataFrame with filtered data
-            - selected_series: list of selected series names
-        """
-        data = data_r()
-        date_range = input.ID_date_range()
-        selected = input.ID_selected_series()
-        
-        # Filter by date range
-        if date_range[0] and date_range[1]:
-            filtered = data.filter(
-                (pl.col("date") >= date_range[0]) & 
-                (pl.col("date") <= date_range[1]),
-            )
-        else:
-            filtered = data
-        
-        # Update reactive values
-        filtered_data.set(filtered)
-        selected_series.set(selected)
-        
-        return {
-            "filtered_data": filtered,
-            "selected_series": selected,
-        }
-    
+        print("Apply filters triggered!")
+        data = _load_new_data()
+        selected_etfs = list(input.selected_etfs())
+        date_range = input.date_range()
+
+        # 列名检查
+        print("数据列名:", data.columns.tolist())
+        print("用户选择的ETF:", selected_etfs)
+        missing_columns = [etf for etf in selected_etfs if etf not in data.columns]
+        if missing_columns:
+            print(f"错误：列 {missing_columns} 不存在！")
+            return {"filtered_data": pd.DataFrame(), "selected_etfs": []}
+
+        # 数据处理
+        selected_columns = ["Date"] + selected_etfs
+        filtered_data = data[selected_columns].copy()
+        filtered_data["Date"] = pd.to_datetime(filtered_data["Date"], errors="coerce")
+        start_date = pd.to_datetime(date_range[0])
+        end_date = pd.to_datetime(date_range[1])
+        filtered_data = filtered_data[(filtered_data["Date"] >= start_date) & (filtered_data["Date"] <= end_date)]
+
+        print("筛选后日期范围:", filtered_data["Date"].min(), "至", filtered_data["Date"].max())
+        return {"filtered_data": filtered_data, "selected_etfs": selected_etfs}
+
     @output
+    @reactive.effect
     @render_widget
     def output_ID_overview_plot():
-        """Generate overview plot of selected time series.
-        
-        Creates an optimized visualization of the selected time series,
-        with automatic downsampling for large datasets and performance
-        optimizations to ensure smooth rendering in the dashboard.
-        
-        Returns
-        -------
-        plotly.graph_objects.Figure
-            Interactive Plotly figure for rendering with render_widget
-        """
-        import plotly.express as px
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
-        
-        # Get current filters
         filters_result = apply_filters()
         filtered = filters_result["filtered_data"]
-        selected = filters_result["selected_series"]
-        
-        if not selected or filtered is None or filtered.is_empty():
-            # Return a simple empty plot with minimal overhead
+        selected = filters_result["selected_etfs"]
+
+        if not selected or filtered is None or filtered.empty:
             fig = go.Figure()
             fig.update_layout(
                 title="No data selected",
@@ -415,174 +470,51 @@ def inputs_server(input, output, session, data_r, series_names_r):
                 margin=dict(l=50, r=50, t=70, b=50),
             )
             fig.add_annotation(
-                text="Select one or more time series and apply filters to view data",
+                text="Select one or more ETFs and apply filters to view data",
                 showarrow=False,
                 font=dict(size=14),
             )
             return fig
-        
-        # Convert to pandas for easier plotting
-        # Ensure selected is a list before concatenation
-        columns_to_select = ["date"] + (selected if isinstance(selected, list) else list(selected))
-        pd_data = filtered.select(columns_to_select).to_pandas()
-        pd_data["date"] = pd.to_datetime(pd_data["date"])
-        
-        # Downsample data if there are too many points
-        data_points = len(pd_data)
-        if data_points > 500:
-            # Calculate frequency based on number of points
-            freq = f"{max(1, data_points // 500)}D"
-            
-            # Group by date frequency, preserving important statistics
-            downsampled = pd_data.set_index("date").resample(freq).agg({
-                col: ['mean', 'min', 'max', 'first', 'last'] for col in pd_data.columns if col != "date"
-            }).reset_index()
-            
-            # Convert multi-level columns to single level
-            downsampled.columns = ['date'] + [f"{col[0]}_{col[1]}" for col in downsampled.columns[1:]]
-            
-            # Create mapping to original columns for plotting
-            col_map = {}
-            for series in selected:
-                col_map[series] = f"{series}_mean"
-            
-            # Use downsampled data for plotting
-            plot_data = downsampled
-        else:
-            # Use original data if small enough
-            plot_data = pd_data
-            col_map = {series: series for series in selected}
-        
-        # Limit number of subplots if there are many series
-        max_subplots = min(len(selected), 5)  # Limit to 5 subplots max
-        if len(selected) > max_subplots:
-            selected_limited = selected[:max_subplots]
-            fig = make_subplots(
-                rows=max_subplots, 
-                cols=1,
-                shared_xaxes=True,
-                subplot_titles=selected_limited + [f"+ {len(selected) - max_subplots} more series (not shown)"],
-                vertical_spacing=0.05,
-            )
-        else:
-            selected_limited = selected
-            fig = make_subplots(
-                rows=len(selected), 
-                cols=1,
-                shared_xaxes=True,
-                subplot_titles=selected,
-                vertical_spacing=0.05,
-            )
-        
-        # Add traces for each series with optimized approach
-        for i, series in enumerate(selected_limited):
-            # Calculate y-axis range efficiently
-            if data_points > 500:  # Use min/max columns from downsampled data
-                series_min = plot_data[f"{series}_min"].min()
-                series_max = plot_data[f"{series}_max"].max()
+
+        # 处理数据
+        pd_data = filtered.copy()
+        pd_data["Date"] = pd.to_datetime(pd_data["Date"], errors="coerce").dt.tz_localize(None)
+        pd_data["Date_str"] = pd_data["Date"].dt.strftime("%Y-%m-%d")  # 格式化日期为字符串
+        pd_data = pd_data.dropna(subset=["Date", "Date_str"] + selected).reset_index(drop=True)
+
+        # 创建图表
+        fig = go.Figure()
+        for etf in selected:
+            if etf in pd_data.columns:
+                fig.add_trace(
+                    go.Scatter(
+                        x=pd_data["Date_str"],  # 使用字符串日期
+                        y=pd_data[etf],
+                        mode="lines+markers",
+                        name=etf,
+                        line=dict(width=2),
+                    )
+                )
             else:
-                series_min = plot_data[series].min()
-                series_max = plot_data[series].max()
-                
-            y_margin = (series_max - series_min) * 0.1 if series_max > series_min else 0.1
-            
-            # Ensure we have valid y-range
-            if pd.isna(series_min) or pd.isna(series_max) or series_min == series_max:
-                y_min, y_max = -1, 1  # Default range
-            else:
-                y_min = series_min - y_margin
-                y_max = series_max + y_margin
-            
-            # Add line trace
-            plot_col = col_map.get(series, series)
-            fig.add_trace(
-                go.Scatter(
-                    x=plot_data["date"], 
-                    y=plot_data[plot_col],
-                    mode="lines",
-                    name=series,
-                    line=dict(width=2),
-                ),
-                row=i+1, 
-                col=1,
-            )
-            
-            # Only add min/max markers for smaller datasets
-            if data_points <= 500:
-                non_na_data = pd_data.dropna(subset=[series])
-                
-                if len(non_na_data) > 0:
-                    try:
-                        # Use nlargest/nsmallest for better performance
-                        max_row = non_na_data.nlargest(1, series).iloc[0]
-                        fig.add_trace(
-                            go.Scatter(
-                                x=[max_row["date"]],
-                                y=[max_row[series]],
-                                mode="markers+text",
-                                text=["Max"],
-                                textposition="top center",
-                                marker=dict(size=8, color="red"),
-                                showlegend=False,
-                            ),
-                            row=i+1,
-                            col=1,
-                        )
-                        
-                        min_row = non_na_data.nsmallest(1, series).iloc[0]
-                        fig.add_trace(
-                            go.Scatter(
-                                x=[min_row["date"]],
-                                y=[min_row[series]],
-                                mode="markers+text",
-                                text=["Min"],
-                                textposition="bottom center",
-                                marker=dict(size=8, color="blue"),
-                                showlegend=False,
-                            ),
-                            row=i+1,
-                            col=1,
-                        )
-                    except (KeyError, ValueError, IndexError):
-                        pass
-            
-            # Set y-axis range
-            fig.update_yaxes(
-                range=[y_min, y_max],
-                row=i+1,
-                col=1,
-            )
-        
-        # Simplified layout for better performance
+                print(f"列 {etf} 不存在！")
+
+        # 配置布局
         fig.update_layout(
-            title="Selected Time Series Overview",
-            showlegend=False,
-            height=max(400, 200 + 200 * len(selected_limited)),
-            template="plotly_white",
-            margin=dict(l=50, r=50, t=70, b=50),
-        )
-        
-        # Add range selector only to the bottom subplot
-        fig.update_xaxes(
-            rangeslider_visible=False,
-            rangeselector=dict(
-                buttons=list([
-                    dict(count=6, label="6m", step="month", stepmode="backward"),
-                    dict(count=1, label="1y", step="year", stepmode="backward"),
-                    dict(step="all"),
-                ]),
+            title="ETF Close Price Trends",
+            xaxis_title="Date",
+            yaxis_title="Close Price",
+            xaxis=dict(
+                tickformat="%Y-%m-%d",  # 指定日期格式
+                tickangle=45,
             ),
-            row=len(selected_limited),
-            col=1,
+            yaxis=dict(autorange=True),
+            template="plotly_white",
+            height=600,
+            dragmode="pan",      # 拖动时平移图表
         )
-        
-        # Performance-optimized configuration
-        config = {
-            'displayModeBar': False,  # Hide the mode bar for cleaner UI
-            'doubleClick': 'reset',   # Reset on double click instead of complex calculations
-        }
-        
         return fig
+        
+        
     
     @output
     @render.table

@@ -65,6 +65,11 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from shinywidgets import render_plotly, output_widget, render_widget
+
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # Configure logging with file output
 log_dir = Path(__file__).parent.parent.parent / "logs"
@@ -92,10 +97,10 @@ import shinyswatch
 from shiny import App, reactive, render, ui
 
 # Import modules
-from src.dashboard.modules.analysis_module import analysis_server, analysis_ui
+#from src.dashboard.modules.analysis_module import analysis_server, analysis_ui
 from src.dashboard.modules.inputs_module import inputs_server, inputs_ui
-from src.dashboard.modules.results_module import results_server, results_ui
-from src.dashboard.modules.portfolios_module import portfolios_server, portfolios_ui
+#from src.dashboard.modules.results_module import results_server, results_ui
+#from src.dashboard.modules.portfolios_module import portfolios_server, portfolios_ui
 
 def get_data():
     """Load the time series data from CSV file.
@@ -165,38 +170,35 @@ def get_series_names(data):
 
 
 # Define app version and build information
-__version__ = "1.0.0"
-__build_date__ = "2025-03-20"
+__version__ = "1.1.0"
+__build_date__ = "2025-04-14"
 
 
 # App UI
 app_UI = ui.page_navbar(
     ui.nav_panel(
-        "Project QWIM: Placeholder Name", 
+        "Quant Crusaders Team", 
         ui.layout_sidebar(
             ui.sidebar(
                 shinyswatch.theme_picker_ui("cosmo"),
-                ui.p("Time Series Analysis and Visualization"),
+                ui.p("Four Models Portfolio Comparison and Visualization for Mid-to-Long-Term Investment"),
                 ui.hr(),
                 ui.tags.h4("About"),
-                ui.p("This dashboard allows analysis of multiple time series data."),
-                ui.p("Use the tabs below to explore the data."),
+                ui.p("This dashboard visualizes the performance of four models for mid-to-long-term investment:"),
+                ui.tags.ul(
+                    ui.tags.li("Compare portfolio strategies: Evaluate how four models perform."),
+                    ui.tags.li("Analyze key metrics: Explore returns, volatility, Sharpe ratio, and more."),
+                    ui.tags.li("Interactive comparison: Compare models based on different assumptions.")
+                ),
                 ui.hr(),
-                ui.tags.h4("Navigation"),
-                ui.p("1. Inputs: Select series and filter data"),
-                ui.p("2. Data Analysis: Visualize and analyze selected data"),
-                ui.p("3. Results: View results and insights"),
-                ui.hr(),
-                ui.a("GitHub", href="https://github.com/user/dashboard-QWIM", target="_blank"),
+                ui.a("Capstone Final Report", href="https://docs.google.com/document/d/1W4b-2jRYdd6uWcNfW4JMaI5DPXPapZprtaeNpefX000/edit?usp=sharing", target="_blank"),
+                ui.p("Team Member: Xiaomeng Ren, Fatma Soliman, Ziqian Zhang, Ge Meng"),
                 ui.hr(),
                 ui.p(f"Version: {__version__}"),
                 ui.p(f"Build: {__build_date__}"),
             ),
             ui.navset_tab(
                 ui.nav_panel("Inputs", inputs_ui("ID_inputs")),
-                ui.nav_panel("Data Analysis", analysis_ui("ID_analysis")),
-                ui.nav_panel("Results", results_ui("ID_results")),
-                ui.nav_panel("Portfolios", portfolios_ui("ID_portfolios")),
                 id="main_tabs",
             ),
         ),
@@ -750,14 +752,14 @@ def app_Server(input, output, session):
 
     try:
         logger.info("Initializing analysis module...")
-        analysis_server("ID_analysis", inputs_data, data_r, series_names_r)
+        #analysis_server("ID_analysis", inputs_data, data_r, series_names_r)
         logger.info("Analysis module initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing analysis module: {str(e)}")
 
     try:
         logger.info("Initializing results module...")
-        results_server("ID_results", inputs_data, data_r, series_names_r)
+        #results_server("ID_results", inputs_data, data_r, series_names_r)
         logger.info("Results module initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing results module: {str(e)}")
