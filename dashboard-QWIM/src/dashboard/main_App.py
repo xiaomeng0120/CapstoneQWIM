@@ -97,8 +97,9 @@ import shinyswatch
 from shiny import App, reactive, render, ui
 
 # Import modules
-#from src.dashboard.modules.analysis_module import analysis_server, analysis_ui
+from src.dashboard.modules.analysis_module import analysis_server, analysis_ui
 from src.dashboard.modules.inputs_module import inputs_server, inputs_ui
+from src.dashboard.modules.black_litterman import model1_ui, model1_server
 #from src.dashboard.modules.results_module import results_server, results_ui
 #from src.dashboard.modules.portfolios_module import portfolios_server, portfolios_ui
 
@@ -199,6 +200,10 @@ app_UI = ui.page_navbar(
             ),
             ui.navset_tab(
                 ui.nav_panel("Inputs", inputs_ui("ID_inputs")),
+                ui.nav_panel("Data Analysis", analysis_ui("ID_analysis")),
+                ui.nav_panel("Black-Litterman Model", model1_ui("ID_model1"),  # 使用新导入的 UI 函数
+),
+                ## add more or back more
                 id="main_tabs",
             ),
         ),
@@ -752,17 +757,17 @@ def app_Server(input, output, session):
 
     try:
         logger.info("Initializing analysis module...")
-        #analysis_server("ID_analysis", inputs_data, data_r, series_names_r)
+        analysis_server("ID_analysis", inputs_data, data_r, series_names_r)
         logger.info("Analysis module initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing analysis module: {str(e)}")
 
     try:
-        logger.info("Initializing results module...")
-        #results_server("ID_results", inputs_data, data_r, series_names_r)
+        logger.info("Initializing black-litterman module...")
+        model1_server("ID_model1", data_r, series_names_r)
         logger.info("Results module initialized successfully")
     except Exception as e:
-        logger.error(f"Error initializing results module: {str(e)}")
+        logger.error(f"Error initializing black-litterman module: {str(e)}")
 
     current_tab = reactive.Value("Inputs")  # Default tab
 

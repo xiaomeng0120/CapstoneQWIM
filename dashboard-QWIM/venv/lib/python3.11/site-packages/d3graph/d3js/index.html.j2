@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+
+    {{ SUPPORT }}
+
+    <style type="text/css">
+        {% include "style.css" %}
+    </style>
+</head>
+<body>
+
+<!-- Create save button -->
+{{ save_button_comment_start }}
+    <div style="max-width:{{ width }}px;">
+        <center><button id="saveButton">Save</button></center>
+    </div>
+{{ save_button_comment_stop }}
+
+
+    <script>
+        {% include "d3.v3.js" %}
+        {% include "d3graphscript.js" %}
+
+        graph = {{ json_data }}
+
+        window.addEventListener('DOMContentLoaded', function () {
+            d3graphscript({
+                width: {{ width }},
+                height: {{ height }},
+                charge: {{ charge }},
+                distance: {{ edge_distance }},
+                directed: {{ directed | lower }},
+                collision: {{ collision }}
+            })
+        });
+
+        // Save image to svg
+        document.getElementById('saveButton').addEventListener('click', function () {
+            var svgData = document.querySelector('svg').outerHTML;
+            var blob = new Blob([svgData], {type: "image/svg+xml;charset=utf-8"});
+            var url = URL.createObjectURL(blob);
+            var link = document.createElement('a');
+            link.href = url;
+            link.download = '{{ title }}.svg';
+            link.click();
+        });
+        
+        
+    </script>
+
+
+
+<!-- SLIDER -->
+{{ slider_comment_start }}
+
+    {% if max_slider > min_slider %}
+	<div style="max-width:{{ width }}px;">
+        <form>
+            <h3>
+                Edge Threshold
+                {{ min_slider }}
+                <input type="range" autocomplete="off" id="thresholdSlider" value="{{ min_slider }}" min="{{ min_slider }}" max="{{ max_slider }}">
+                {{ max_slider }}
+            </h3>
+        </form>
+	</div>
+    {% endif %}
+
+{{ slider_comment_stop }}
+
+</body>
+</html>
+

@@ -37,6 +37,9 @@ from scipy.stats import gaussian_kde
 from shiny import module, reactive, render, ui
 from shinywidgets import render_plotly, output_widget, render_widget
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 @module.ui
 def analysis_ui():
@@ -75,10 +78,10 @@ def analysis_ui():
                         ui.input_date_range(
                             "ID_time_evo_date_range",
                             "Select Date Range:",
-                            start=datetime(2002, 1, 1),
-                            end=datetime(2025, 3, 31),
-                            min=datetime(2002, 1, 1),
-                            max=datetime(2025, 3, 31),
+                            start=datetime(2008, 7, 2),
+                            end=datetime(2025, 3, 2),
+                            min=datetime(2008, 7, 2),
+                            max=datetime(2025, 3, 2),
                             format="yyyy-mm-dd",
                             separator=" to ",
                         ),
@@ -96,13 +99,6 @@ def analysis_ui():
                         ),
                         ui.input_checkbox(
                             "ID_show_stats_markers", "Show Statistical Markers", True
-                        ),
-                        ui.h4("Download Options"),
-                        ui.download_button(
-                            "output_ID_download_time_evo_plot", "Download Plot"
-                        ),
-                        ui.download_button(
-                            "output_ID_download_time_evo_data", "Download Data"
                         ),
                     ),
                     ui.h3("Time Series Evolution"),
@@ -141,10 +137,6 @@ def analysis_ui():
                             },
                             selected=["basic", "moments"],
                         ),
-                        ui.h4("Download Options"),
-                        ui.download_button(
-                            "output_ID_download_stats", "Download Statistics"
-                        ),
                     ),
                     ui.h3("Statistical Analysis"),
                     ui.output_ui("output_ID_stats_tables"),
@@ -172,10 +164,10 @@ def analysis_ui():
                         ui.input_date_range(
                             "ID_heatmap_date_range",
                             "Select Date Range:",
-                            start=datetime(2002, 1, 1),
-                            end=datetime(2025, 3, 31),
-                            min=datetime(2002, 1, 1),
-                            max=datetime(2025, 3, 31),
+                            start=datetime(2008, 7, 2),
+                            end=datetime(2025, 3, 2),
+                            min=datetime(2008, 7, 2),
+                            max=datetime(2025, 3, 2),
                             format="yyyy-mm-dd",
                             separator=" to ",
                         ),
@@ -201,13 +193,6 @@ def analysis_ui():
                                 "distance": "Distance",
                             },
                             selected="correlation",
-                        ),
-                        ui.h4("Download Options"),
-                        ui.download_button(
-                            "output_ID_download_heatmap", "Download Heatmap"
-                        ),
-                        ui.download_button(
-                            "output_ID_download_heatmap_data", "Download Data"
                         ),
                     ),
                     ui.h3("Time Series Heatmap"),
@@ -271,6 +256,33 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
     get_stats_data : Reactive calc function for statistics data
     get_heatmap_data : Reactive calc function for heatmap data
     """
+    # New data section
+    def _load_new_data():
+        print("In loading Data")
+        """Load the new dataset from the raw/etf_data directory."""
+        data_path = Path("data/raw/etf_data.csv")
+        logger.info(f"Loading data from {data_path}")
+        
+        if not data_path.exists():
+            logger.error(f"Data file not found at {data_path}")
+            raise FileNotFoundError(f"Data file not found at {data_path}")
+        
+        # Load data using polars
+        df = pl.read_csv(data_path)
+        
+        # Ensure date column is properly formatted
+        df = df.with_columns(pl.col("Date").str.to_date())
+        
+        logger.info(f"Successfully loaded data: {len(df)} rows, {len(df.columns)} columns")
+        print("############################")
+        return df
+    
+    def _get_series_names(data):
+        print("Right in new func")
+        series_names = [col for col in data.columns if col != "Date"]
+        logger.info(f"Found {len(series_names)} time series: {', '.join(series_names)}")
+        return series_names
+
     # Update series selection dropdowns when series names change
     @reactive.effect
     def _update_series_selections():
@@ -280,7 +292,16 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
         series names change, ensuring UI elements stay synchronized with
         available data.
         """
-        series_names = series_names_r()
+        print("findout")
+        new_data = _load_new_data()  # 调用加载新数据的函数
+        print(new_data)
+            # 如果新数据为 None，跳过后续操作
+        if new_data is None:
+            print("Error: No data loaded.")
+            return
+        
+        series_names = _get_series_names(new_data)
+        print(series_names)
         
         ui.update_select(
             "ID_time_evo_series",
@@ -309,24 +330,31 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
             Filtered dataframe containing date and selected series columns,
             or None if no series is selected
         """
-        data = data_r()
+        print("here")
+        # Load the new data using _load_new_data function
+        new_data = _load_new_data()  # Ensure you are calling your modified data loading
+
         date_range = input.ID_time_evo_date_range()
+        print(date_range)
         series = input.ID_time_evo_series()
-        
+        print(series)
+
         if not series:
             return None
         
         # Filter by date range
         if date_range[0] and date_range[1]:
-            filtered = data.filter(
-                (pl.col("date") >= date_range[0]) & 
-                (pl.col("date") <= date_range[1]),
+            filtered = new_data.filter(
+                (pl.col("Date") >= date_range[0]) & 
+                (pl.col("Date") <= date_range[1]),
             )
         else:
-            filtered = data
+            filtered = new_data
         
         # Select only relevant columns
-        filtered = filtered.select(["date", series])
+        filtered = filtered.select(["Date", series])
+        print(" Here Printing:")
+        print(filtered)
         
         return filtered
     
@@ -334,6 +362,7 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
     @output
     @render_widget
     def output_ID_time_evolution_plot():
+        print("Entered?")
         """Generate the time evolution plot for the selected series.
         
         Creates an interactive Plotly Express visualization showing the time evolution
@@ -367,8 +396,8 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
             return fig
         
         # Convert to pandas for easier plotting
-        pd_data = filtered_data.select(["date", series]).to_pandas()
-        pd_data["date"] = pd.to_datetime(pd_data["date"])
+        pd_data = filtered_data.select(["Date", series]).to_pandas()
+        pd_data["Date"] = pd.to_datetime(pd_data["Date"])
         
         # Apply transformation based on viz_type
         if viz_type == "normalized":
@@ -397,10 +426,10 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
         # Add main time series line
         line_fig = px.line(
             pd_data,
-            x="date",
+            x="Date",
             y="value",
             title=f"Time Evolution of {series}",
-            labels={"date": "Date", "value": y_title},
+            labels={"Date": "Date", "value": y_title},
             template="plotly_white",
             render_mode="webgl"  # Faster rendering for large datasets
         )
@@ -414,7 +443,7 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
             from scipy import stats
             
             # Convert dates to numeric for regression
-            pd_data['date_numeric'] = pd_data['date'].astype(int) // 10**9  # Convert to Unix timestamp
+            pd_data['date_numeric'] = pd_data['Date'].astype(int) // 10**9  # Convert to Unix timestamp
             
             # Perform linear regression
             mask = ~np.isnan(pd_data['value'])
@@ -433,12 +462,28 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
                 
                 # Add trend information to title
                 trend_info = f"{trend_direction} Trend (R²={r_value**2:.2f})"
-                fig.update_layout(title=f"Time Evolution of {series} - {trend_info}")
+                fig.update_layout(
+                    title=f"Time Evolution of {series} - {trend_info}", 
+                    height=600,  # Adjust height
+                    width=1000,  # Adjust width
+                    title_x=0.5,
+                    title_y=0.95,
+                    title_yanchor="top",  # 确保标题的顶部对齐
+                    margin=dict(l=40, r=40, t=150, b=250), # 增加底部边距
+                    legend=dict(
+                        orientation="h",  # 设置图例为水平布局
+                        yanchor="bottom",  # 图例的y坐标对齐
+                        y=1.05,  # 调整图例的位置，避免和图表重叠
+                        xanchor="right",  # 图例的x坐标对齐
+                        x=1  # 图例置于右边
+                    ),
+                    dragmode="pan",
+                )
                 
                 # Add trendline to figure
                 fig.add_trace(
                     go.Scatter(
-                        x=pd_data['date'],
+                        x=pd_data['Date'],
                         y=pd_data['trendline'],
                         mode='lines',
                         line=dict(color='red', dash='dash', width=1),
@@ -457,7 +502,7 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
                 max_point = clean_data.loc[max_idx]
                 fig.add_trace(
                     go.Scatter(
-                        x=[max_point["date"]],
+                        x=[max_point["Date"]],
                         y=[max_point["value"]],
                         mode="markers+text",
                         marker=dict(size=10, color="red", symbol="star"),
@@ -473,7 +518,7 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
                 min_point = clean_data.loc[min_idx]
                 fig.add_trace(
                     go.Scatter(
-                        x=[min_point["date"]],
+                        x=[min_point["Date"]],
                         y=[min_point["value"]],
                         mode="markers+text",
                         marker=dict(size=10, color="blue", symbol="star"),
@@ -504,7 +549,7 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
                 std_val = clean_data["value"].std()
                 fig.add_trace(
                     go.Scatter(
-                        x=clean_data["date"],
+                        x=clean_data["Date"],
                         y=[mean_val + std_val] * len(clean_data),
                         mode="lines",
                         line=dict(color="rgba(0,128,0,0.2)", dash="dash", width=1),
@@ -515,7 +560,7 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
                 
                 fig.add_trace(
                     go.Scatter(
-                        x=clean_data["date"],
+                        x=clean_data["Date"],
                         y=[mean_val - std_val] * len(clean_data),
                         mode="lines",
                         line=dict(color="rgba(0,128,0,0.2)", dash="dash", width=1),
@@ -586,7 +631,7 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
     
     # Generate time evolution statistics table
     @output
-    @render.table
+    @render.ui
     def output_ID_time_evolution_stats():
         """
         Generate a statistics table for the time evolution tab.
@@ -629,8 +674,16 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
         
         # Format values to 4 decimal places
         stats["Value"] = [round(v, 4) if isinstance(v, (float, np.float64)) else v for v in stats["Value"]]
+
+        stats_df = pd.DataFrame(stats)
+        transposed_df = stats_df.set_index("Statistic").T
+
+        # Use gt to format the table
+        gt_table = (GT(transposed_df)
+            .tab_header(title="Series Statistics")
+        )
         
-        return pd.DataFrame(stats)
+        return ui.HTML(gt_table._repr_html_())  # Display the formatted table
     
     # Get filtered data for Statistics tab
     @reactive.calc
@@ -643,7 +696,7 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
         pl.DataFrame
             Filtered dataframe for statistics calculations
         """
-        data = data_r()
+        new_data = _load_new_data()
         date_range = input.ID_stats_date_range()
         series = input.ID_stats_series()
         
@@ -652,15 +705,15 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
         
         # Filter by date range
         if date_range[0] and date_range[1]:
-            filtered = data.filter(
-                (pl.col("date") >= date_range[0]) & 
-                (pl.col("date") <= date_range[1])
+            filtered = new_data.filter(
+                (pl.col("Date") >= date_range[0]) & 
+                (pl.col("Date") <= date_range[1])
             )
         else:
-            filtered = data
+            filtered = new_data
         
         # Select only relevant columns
-        filtered = filtered.select(["date", series])
+        filtered = filtered.select(["Date", series])
         
         return filtered
     
@@ -1029,17 +1082,17 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
         pl.DataFrame
             Filtered dataframe for heatmap visualization
         """
-        data = data_r()
+        new_data = _load_new_data()
         date_range = input.ID_heatmap_date_range()
         
         # Filter by date range
         if date_range[0] and date_range[1]:
-            filtered = data.filter(
-                (pl.col("date") >= date_range[0]) & 
-                (pl.col("date") <= date_range[1])
+            filtered = new_data.filter(
+                (pl.col("Date") >= date_range[0]) & 
+                (pl.col("Date") <= date_range[1])
             )
         else:
-            filtered = data
+            filtered = new_data
         
         return filtered
     
@@ -1078,7 +1131,7 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
             return fig
         
         # Get all series names except date
-        series_names = [col for col in filtered_data.columns if col != "date"]
+        series_names = [col for col in filtered_data.columns if col != "Date"]
         
         # If too many series, limit to a manageable number for visualization
         if (len(series_names) > 50):
@@ -1089,9 +1142,9 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
             warning_msg = None
         
         # Convert to pandas for easier manipulation
-        pd_data = filtered_data.select(["date"] + series_names).to_pandas()
-        pd_data["date"] = pd.to_datetime(pd_data["date"])
-        pd_data.set_index("date", inplace=True)
+        pd_data = filtered_data.select(["Date"] + series_names).to_pandas()
+        pd_data["Date"] = pd.to_datetime(pd_data["Date"])
+        pd_data.set_index("Date", inplace=True)
         
         # Handle missing data to avoid visualization issues - FIXED HERE
         pd_data = pd_data.ffill().bfill().fillna(0)
@@ -1375,252 +1428,3 @@ def analysis_server(input, output, session, inputs_data, data_r, series_names_r)
         
         return ui.HTML(interpretation)
     
-    # Download handlers
-    @render.download(filename=lambda: f"stats_{input.ID_stats_series()}.csv")
-    def output_ID_download_stats():
-        """Download handler for statistics data."""
-        filtered_data = get_stats_data()
-        series = input.ID_stats_series()
-        
-        if filtered_data is None or filtered_data.is_empty():
-            return "No data available"
-        
-        # Extract series data
-        series_data = filtered_data.select(series).to_numpy().flatten()
-        
-        # Calculate all statistics
-        stats_dict = {
-            "Statistic": [],
-            "Value": []
-        }
-        
-        # Basic statistics
-        basic_stats = {
-            "Count": len(series_data),
-            "Mean": np.mean(series_data),
-            "Median": np.median(series_data),
-            "Std Dev": np.std(series_data),
-            "Min": np.min(series_data),
-            "25%": np.percentile(series_data, 25),
-            "50%": np.percentile(series_data, 50),
-            "75%": np.percentile(series_data, 75),
-            "Max": np.max(series_data),
-            "Range": np.max(series_data) - np.min(series_data),
-        }
-        
-        # Moments
-        moments = {
-            "Variance": np.var(series_data),
-            "Skewness": scipy_stats.skew(series_data),
-            "Kurtosis": scipy_stats.kurtosis(series_data, fisher=True),
-            "Excess Kurtosis": scipy_stats.kurtosis(series_data, fisher=False)
-        }
-        
-        # Combine all statistics
-        all_stats = {**basic_stats, **moments}
-        
-        for stat, value in all_stats.items():
-            stats_dict["Statistic"].append(stat)
-            stats_dict["Value"].append(value)
-        
-        # Convert to DataFrame and return as CSV
-        df = pd.DataFrame(stats_dict)
-        return df.to_csv(index=False)
-
-    @render.download(filename="heatmap.png")
-    def output_ID_download_heatmap():
-        """Download handler for heatmap visualization."""
-        from io import BytesIO
-        import plotly.graph_objects as go
-        
-        # This depends on the implementation of the heatmap
-        # For Plotly-based heatmaps, we can render a static version:
-        filtered_data = get_heatmap_data()
-        ordering = input.ID_heatmap_ordering()
-        color_scale = input.ID_heatmap_color_scale()
-        metric = input.ID_heatmap_metric()
-        
-        if filtered_data is None or filtered_data.is_empty():
-            return "No data available"
-        
-        # Get all series names except date
-        series_names = [col for col in filtered_data.columns if col != "date"]
-        
-        # Convert to pandas
-        pd_data = filtered_data.select(["date"] + series_names).to_pandas()
-        
-        # Set date as index
-        pd_data["date"] = pd.to_datetime(pd_data["date"])
-        pd_data.set_index("date", inplace=True)
-        
-        # Prepare data based on metric
-        if metric == "correlation":
-            matrix_data = pd_data.corr().values
-            x_labels = y_labels = series_names
-            title = "Correlation Heatmap"
-            zmin, zmax = -1, 1
-        elif metric == "distance":
-            from scipy.spatial.distance import squareform, pdist
-            clean_data = pd_data.fillna(method='ffill').fillna(method='bfill')
-            dist_matrix = squareform(pdist(clean_data.T, metric='correlation'))
-            matrix_data = dist_matrix
-            x_labels = y_labels = series_names
-            title = "Distance Heatmap"
-            zmin, zmax = None, None
-        else:
-            if len(pd_data) > 100:
-                freq = 'M' if len(pd_data) > 500 else 'W'
-                pd_data = pd_data.resample(freq).mean()
-            matrix_data = pd_data.values.T
-            x_labels = [d.strftime('%Y-%m-%d') for d in pd_data.index]
-            y_labels = series_names
-            title = "Time Series Heatmap"
-            zmin, zmax = None, None
-        
-        # Create static heatmap
-        fig = go.Figure(
-            data=go.Heatmap(
-                z=matrix_data,
-                x=x_labels,
-                y=y_labels,
-                colorscale=color_scale,
-                zmin=zmin,
-                zmax=zmax
-            )
-        )
-        
-        fig.update_layout(
-            title=title,
-            width=1200,
-            height=900
-        )
-        
-        try:
-            # Save to BytesIO object - requires kaleido package
-            import kaleido
-            buf = BytesIO()
-            fig.write_image(buf, format="png")
-            buf.seek(0)
-            
-            # Return the bytes
-            return buf.read()
-        except ImportError:
-            # Fallback if kaleido is not available
-            return f"Error: The kaleido package is required for image export. Install with 'pip install kaleido'."
-
-    @render.download(filename=lambda: f"time_evolution_{input.ID_time_evo_series()}.png")
-    def output_ID_download_time_evo_plot():
-        """Download handler for time evolution plot."""
-        from io import BytesIO
-        
-        # Get the current plot
-        filtered_data = get_time_evo_data()
-        series = input.ID_time_evo_series()
-        
-        if filtered_data is None or filtered_data.is_empty():
-            return "No data available"
-        
-        # Recreate the plot for download (simplified version)
-        pd_data = filtered_data.select(["date", series]).to_pandas()
-        pd_data["date"] = pd.to_datetime(pd_data["date"])
-        
-        # Create a basic plot (this should match the displayed plot but without interactive elements)
-        fig = px.line(
-            pd_data,
-            x="date",
-            y=series,
-            title=f"Time Evolution of {series}",
-            labels={"date": "Date", series: series},
-            template="plotly_white"
-        )
-        
-        fig.update_layout(
-            width=1200,
-            height=800,
-            margin=dict(l=40, r=40, t=80, b=40),
-        )
-        
-        try:
-            # Save to BytesIO object
-            buf = BytesIO()
-            fig.write_image(buf, format="png")
-            buf.seek(0)
-            
-            # Return the bytes
-            return buf.read()
-        except Exception as e:
-            # Return error message if image export fails
-            return f"Error generating plot image: {str(e)}"
-
-    @render.download(filename="heatmap.csv")
-    def output_ID_download_heatmap_data():
-        """Download handler for heatmap data in CSV format."""
-        filtered_data = get_heatmap_data()
-        metric = input.ID_heatmap_metric()
-        
-        if filtered_data is None or filtered_data.is_empty():
-            return "No data available"
-        
-        # Get all series names except date
-        series_names = [col for col in filtered_data.columns if col != "date"]
-        
-        # Convert to pandas
-        pd_data = filtered_data.select(["date"] + series_names).to_pandas()
-        
-        # Set date as index
-        pd_data["date"] = pd.to_datetime(pd_data["date"])
-        pd_data.set_index("date", inplace=True)
-        
-        # Prepare data based on metric
-        if metric == "correlation":
-            # Create correlation matrix and convert to CSV
-            corr_matrix = pd_data.corr()
-            return corr_matrix.to_csv()
-            
-        elif metric == "distance":
-            # Calculate distance matrix and convert to CSV
-            from scipy.spatial.distance import squareform, pdist
-            clean_data = pd_data.fillna(method='ffill').fillna(method='bfill')
-            dist_array = pdist(clean_data.T, metric='correlation')
-            dist_matrix = pd.DataFrame(
-                squareform(dist_array),
-                index=series_names,
-                columns=series_names
-            )
-            return dist_matrix.to_csv()
-        
-        else:  # values
-            # For raw values, just return the data itself
-            if len(pd_data) > 100:
-                # Resample to reduce size
-                freq = 'M' if len(pd_data) > 500 else 'W'
-                pd_data = pd_data.resample(freq).mean()
-            
-            return pd_data.to_csv()
-
-    @render.download(filename=lambda: f"time_evolution_{input.ID_time_evo_series()}.csv")
-    def output_ID_download_time_evo_data():
-        """Download handler for time evolution data in CSV format."""
-        filtered_data = get_time_evo_data()
-        series = input.ID_time_evo_series()
-        viz_type = input.ID_time_evo_viz_type()
-        
-        if filtered_data is None or filtered_data.is_empty():
-            return "No data available"
-        
-        # Convert to pandas
-        pd_data = filtered_data.select(["date", series]).to_pandas()
-        pd_data["date"] = pd.to_datetime(pd_data["date"])
-        
-        # Apply transformation if needed
-        if viz_type == "normalized":
-            min_val = pd_data[series].min()
-            max_val = pd_data[series].max()
-            if max_val > min_val:
-                pd_data[f"{series}_normalized"] = (pd_data[series] - min_val) / (max_val - min_val)
-        
-        elif viz_type == "pct_change":
-            pd_data[f"{series}_pct_change"] = pd_data[series].pct_change() * 100
-        
-        # Return as CSV
-        return pd_data.to_csv(index=False)
