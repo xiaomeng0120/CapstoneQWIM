@@ -171,7 +171,7 @@ def get_series_names(data):
 
 
 # Define app version and build information
-__version__ = "3.1.0"
+__version__ = "3.1.1"
 __build_date__ = "2025-04-17"
 
 
@@ -797,11 +797,11 @@ def app_Server(input, output, session):
     try:
         logger.info("Initializing portfolios module...")
         # Use only the parameters that the function actually accepts
-        portfolios_server(
-            "ID_portfolios", 
-            inputs_data=inputs_data, 
-            data_r=data_r
-        )
+        #portfolios_server(
+        #    "ID_portfolios", 
+        #    inputs_data=inputs_data, 
+        #    data_r=data_r
+        #)
         logger.info("Portfolios module initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing portfolios module: {str(e)}")
