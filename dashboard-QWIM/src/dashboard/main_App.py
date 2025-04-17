@@ -171,8 +171,8 @@ def get_series_names(data):
 
 
 # Define app version and build information
-__version__ = "1.1.0"
-__build_date__ = "2025-04-14"
+__version__ = "3.1.0"
+__build_date__ = "2025-04-17"
 
 
 # App UI
