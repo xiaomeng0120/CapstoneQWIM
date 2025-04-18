@@ -22,15 +22,125 @@ from scipy import stats as scipy_stats  # Rename to avoid naming conflicts
 from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
 from scipy.stats import gaussian_kde
-from shiny import module, reactive, render, ui
+from shiny import module, reactive, render, ui, render_ui
 from shinywidgets import render_plotly, output_widget, render_widget
 import statsmodels.api as sm
 import cvxpy as cp
 from numpy.linalg import pinv
+from sklearn.linear_model import LinearRegression
+from scipy.optimize import minimize
 
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+parameter_sets = [
+        {   
+            # View A: Growth
+            "name": "View A",
+            "risk_aversion": 2.5,
+            "tau": 0.025,
+            "P_f": np.array([
+                [1, 0, 0, 0, 0, 0], 
+                [0, 0, 0, 0, 0, 1],
+                [0, 0, -1, 0, 0, 0]
+            ]),
+            "Q_f": np.array([
+                [0.0002],
+                [0.0003],
+                [0.0001]
+            ])
+        },
+        {
+            "name": "View B",
+            "risk_aversion": 2.5,
+            "tau": 0.025,
+            "P_f": np.array([
+                [-1, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, -1],
+                [0, 0, 0, 1, 0, 0]
+            ]),
+            "Q_f": np.array([
+                [0.0001],
+                [0.0002],
+                [0.0003]
+            ])
+        },
+        {
+            "name": "View C",
+            "risk_aversion": 2.5,
+            "tau": 0.025,
+            "P_f": np.array([
+                [0, 1, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, -1]
+            ]),
+            "Q_f": np.array([
+                [0.0003],
+                [0.0001]
+            ])
+        },
+        {
+            "name": "View D",
+            "risk_aversion": 2.5,
+            "tau": 0.025,
+            "P_f": np.array([
+                [0, 0, 1, 0, 0, 0],
+                [0, 0, 0, 0, 1, 0],
+                [0, 0, 0, 0, 0, -1]
+            ]),
+            "Q_f": np.array([
+                [0.0004],
+                [0.0003],
+                [0.0002]
+            ])
+        },
+        {
+            "name": "View E",
+            "risk_aversion": 2.5,
+            "tau": 0.025,
+            "P_f": np.array([
+                [1, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 1],
+                [0, 1, 0, 0, 0, 0],
+                [0, 0, 0, 1, 0, 0]
+            ]),
+            "Q_f": np.array([
+                [0.0001],
+                [0.00015],
+                [0.0002],
+                [0.00025]
+            ])
+        },
+        {
+            "name": "View F",
+            "risk_aversion": 2.5,
+            "tau": 0.025,
+            "P_f": np.array([
+                [1, 0, 0, 0, 0, 0],
+                [0, 0, 1, 0, 0, 0],
+                [0, 0, 0, 0, 0, -1]
+            ]),
+            "Q_f": np.array([
+                [0.0001],
+                [0.0003],
+                [0.0002]
+            ])
+        },
+        {
+            "name": "View G",
+            "risk_aversion": 2.5,
+            "tau": 0.025,
+            "P_f": np.array([
+                [1, 0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0, 1]
+            ]),
+            "Q_f": np.array([
+                [0.07/252],
+                [0.03/252]
+            ])
+        }
+        # 你可以继续添加更多组合
+    ]
 
 def load_data():
     """   拿到两个数据集:ETF和ff5+mom   """
@@ -197,7 +307,7 @@ def prepStep(train_ff_factors, test_ff_factors, train_etf_returns, test_etf_retu
     #print(Sigma)
 
     print("**************End for def prepStep()***************************")
-    return train_factor_returns, train_factor_returns, B, Omega_df, Sigma, test_etf_excess_returns
+    return train_factor_returns, test_factor_returns, B, Omega_df, Sigma, test_etf_excess_returns
 
 def metricGenerate(risk_aversion, tau, P_f, Q_f, Sigma, B, Omega_df, test_etf_excess_returns, test_factor_returns):
     market_weights = calMarketWeights()
@@ -360,7 +470,128 @@ def metricGenerate(risk_aversion, tau, P_f, Q_f, Sigma, B, Omega_df, test_etf_ex
     }
 
     print("Reach the End")
-    return results
+    return results, daily_portfolio_return
+
+################## Dynamic vs Static ######################
+def regression_step(F, R):
+    B_hat = []
+    residuals = []
+    
+    for i in range(R.shape[1]):
+        model = LinearRegression().fit(F, R.iloc[:, i])
+        B_hat.append(model.coef_)
+        residuals.append(R.iloc[:, i] - model.predict(F))
+    
+    B_hat = np.array(B_hat)
+    return B_hat, residuals
+
+def calculate_sigma_and_pi(B_hat, residuals, F, market_weights, risk_aversion, Sigma_f):
+    Sigma_e = np.diag(np.var(residuals, axis=1))
+    Sigma = B_hat @ Sigma_f @ B_hat.T + Sigma_e
+    pi = risk_aversion * Sigma @ market_weights.reshape(-1, 1)
+    
+    return Sigma, pi
+
+def posterior_inference(tau, P_f, Sigma_f, pi_f, Q_f, Sigma):
+    Omega = np.diag(np.diag(tau * P_f @ Sigma_f @ P_f.T))
+    middle = np.linalg.inv(tau * np.linalg.inv(Sigma_f) + P_f.T @ np.linalg.inv(Omega) @ P_f)
+    psi_bl = middle @ (tau * np.linalg.inv(Sigma_f) @ pi_f + P_f.T @ np.linalg.inv(Omega) @ Q_f)
+    
+    return psi_bl
+
+def neg_sharpe(w, mu, cov):
+    ret = np.dot(w, mu)
+    vol = np.sqrt(np.dot(w.T, np.dot(cov, w)))
+    return -ret / vol
+
+def optimize_portfolio(mu_bl, Sigma):
+    cons = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
+    bounds = [(0, 1)] * len(mu_bl)
+    w0 = np.ones(len(mu_bl)) / len(mu_bl)
+
+    opt = minimize(neg_sharpe, w0, args=(mu_bl.values, Sigma), method='SLSQP', bounds=bounds, constraints=cons)
+    w_opt = opt.x
+    return w_opt
+
+def dynamic_rebalancing(tau, train_etf_returns, train_factor_returns, test_etf_returns, test_factor_returns, window_len, rebalance_step, risk_aversion, P_f, Q_f):
+    start_idx = window_len
+    end_idx = len(train_etf_returns)
+    returns_history = []
+    weights_history = []
+    dates_history = []
+
+    for t in range(start_idx, end_idx - rebalance_step, rebalance_step):
+        R = train_etf_returns.iloc[t - window_len:t]
+        F = train_factor_returns.iloc[t - window_len:t]
+
+        # Step 1: 回归得到 B_hat 和残差
+        B_hat, residuals = regression_step(F, R)
+
+        # Step 2: 计算 Sigma 和 pi
+        Sigma_f = np.cov(F.T)
+        market_weights = np.ones(R.shape[1]) / R.shape[1]
+        Sigma, pi = calculate_sigma_and_pi(B_hat, residuals, F, market_weights, risk_aversion, Sigma_f)
+
+        # Step 3: 计算 posterior psi_bl
+        B_pinv = np.linalg.pinv(B_hat)
+        pi_f = B_pinv @ pi
+        psi_bl = posterior_inference(tau, P_f, Sigma_f, pi_f, Q_f, Sigma)
+
+        # Step 4: 计算 mu_bl
+        mu_bl = B_hat @ psi_bl
+        mu_bl = pd.Series(mu_bl.flatten(), index=R.columns)
+
+        # Step 5: 优化：最大 Sharpe 比组合
+        w_opt = optimize_portfolio(mu_bl, Sigma)
+
+        # 记录组合收益
+        future_ret = test_etf_returns.iloc[t:t + rebalance_step].values @ w_opt
+        returns_history.extend(future_ret)
+        weights_history.append(w_opt)
+
+        # 使用 t 的值来获取 test_etf_returns 的日期索引
+        if t < len(test_etf_returns):
+            dates_history.append(test_etf_returns.index[t])  # 确保 t 在范围内
+
+    # 返回最终收益序列
+    return pd.Series(returns_history, index=test_etf_returns.index[start_idx:start_idx + len(returns_history)])
+
+def get_perf_stats(return_series):
+    mean_daily = return_series.mean()
+    annual_return = (1 + mean_daily)**252 - 1
+    geom_return = (np.prod(1 + return_series))**(252 / len(return_series)) - 1
+    min_return = return_series.min()
+    volatility = return_series.std()
+    annualized_volatility = volatility * np.sqrt(252)
+    sharpe_ratio = mean_daily / volatility * np.sqrt(252)
+    skewness = return_series.skew()
+    kurtosis = return_series.kurtosis()
+    max_dd = ((1 + return_series).cumprod() / (1 + return_series).cumprod().cummax() - 1).min()
+    
+    # 最大10日回撤（以10天为窗口的累计收益变化）
+    roll_10 = (1 + return_series).rolling(window=10).apply(np.prod, raw=True)
+    max_10dd = (roll_10 / roll_10.cummax() - 1).min()
+    
+    # VaR / CVaR 95%
+    var_95 = np.percentile(return_series, 5)
+    cvar_95 = return_series[return_series <= var_95].mean()
+
+    return {
+        "Mean Daily Return": f"{mean_daily:.4%}",
+        "Annualized Return": f"{annual_return:.4%}",
+        "Geometric Return": f"{geom_return:.4%}",
+        "Minimum Daily Return": f"{min_return:.4%}",
+        "Volatility (daily)": f"{volatility:.4%}",
+        "Volatility (annual)": f"{annualized_volatility:.4%}",
+        "Sharpe Ratio (annual)": f"{sharpe_ratio:.4f}",
+        "Skewness": f"{skewness:.4f}",
+        "Kurtosis (excess)": f"{kurtosis:.4f}",
+        "Max Drawdown": f"{max_dd:.4%}",
+        "Max 10-Day Drawdown": f"{max_10dd:.4%}",
+        "VaR 95% (1-day)": f"{var_95:.4%}",
+        "CVaR 95% (1-day)": f"{cvar_95:.4%}"
+    }
+
 
 
 @module.ui
@@ -436,8 +667,9 @@ def model1_ui():
                                         selected=0.06
                         ),
                         
-                        ui.input_text("custom_name", "Name Your Custom View:", value="Custom View 1"),
+                        ui.input_text("custom_name", "Name Your Custom View:", value="View 1"),
                         ui.input_action_button("apply_investor_view", "Apply Selection", class_="btn-primary"),
+                        ui.input_action_button("clear_custom_views", "Clear Custom Views", class_="btn-warning"),
                     ),
                     ui.h3("Model Overview", style="margin-top: 0px; margin-bottom: 5px;"),
                     ui.markdown("""
@@ -463,13 +695,13 @@ def model1_ui():
                     ui.output_text("status"),
                     ui.div(
                         output_widget("output_investor_views_table"),
-                        style="height: 500px; overflow-y: auto;"
+                        style="height: 500px; overflow-y: auto; overflow-x: auto; width: 100%;"
                     ), 
                     ui.hr(style="margin-top: 5px; margin-bottom: 5px;"),
                     ui.h3("View Performance (Scatter)", style="margin-top: 10px; margin-bottom: 5px;"),
                     ui.div(
                         output_widget("output_investor_views_scatter"),
-                        style="height: 400px; overflow-y: auto;"
+                        style="height: 500px; overflow-y: auto; width: 100%"
                     ),
                     ui.hr(style="margin-top: 5px; margin-bottom: 5px;"),
                     ui.h3("Basic 7 Views Info", style="margin-top: 10px; margin-bottom: 5px;"),
@@ -481,11 +713,21 @@ def model1_ui():
                 "Dynamic vs Static",
                 ui.layout_sidebar(
                     ui.sidebar(
+                        ui.h4("Rebalancing Frequency"),
+                        ui.input_slider("rebalance_step", "Select Rebalance Step (days):", 
+                                        min=30, max=252, value=63, step=1),
                         ui.h4("Strategy Selection"),
-                        ui.input_select("ID_strategy_type", "Select Strategy Type:", choices=["Static", "Dynamic"], selected="Dynamic"),
+                        ui.input_select("view_selection", "Select View:", 
+                                        choices=["View A", "View B", "View C", "View D", "View E", "View F", "View G"],  # Get choices from reactive variable
+                                        selected="View G"),
+                                        ui.input_action_button("show_results", "Show Results", class_="btn-primary"),
+                                        ui.input_checkbox("show_benchmark", "Show Benchmark (SPY)", value=False),  # 添加复选框
                     ),
                     ui.h3("Strategy Performance Comparison"),
+                    ui.h6('Press "Show Results" to view it!'),
                     output_widget("output_ID_strategy_comparison"),
+                    ui.hr(),
+                    ui.output_data_frame("comparison_table") 
                 ),
             ),
             ui.nav_panel(
@@ -557,6 +799,9 @@ def model1_server(input, output, session, data_r, series_names_r):
     - Stress testing
     - Portfolio weights visualization
     """
+    train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns = split_trainTest()
+    train_factor_returns, test_factor_returns, B, Omega_df, Sigma, test_etf_excess_returns = prepStep(train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns)
+    save_series = 0
 
     # ✅ 初始化状态文本
     status_text = reactive.Value("Ready")
@@ -569,6 +814,7 @@ def model1_server(input, output, session, data_r, series_names_r):
     view_update_trigger = reactive.Value(0)
     # 在此初始化一个存储表格的地方
     all_results = pd.read_csv("data/processed/7_views.csv", index_col=0)
+    all_portR = pd.read_csv("data/processed/7_portRs.csv", index_col=0)
 
     @output
     @render_plotly
@@ -610,8 +856,30 @@ def model1_server(input, output, session, data_r, series_names_r):
             )])
             
             fig.update_layout(
+                title="View Comparison",
+                xaxis_title="Metrics",
                 margin=dict(l=10, r=10, t=30, b=10),
-                height=700
+                height=500,
+                width = 1000,
+                showlegend=False,
+                autosize=True,
+                paper_bgcolor="rgba(0, 0, 0, 0)",  # 设置背景透明
+                plot_bgcolor="rgba(0, 0, 0, 0)",   # 设置背景透明
+                # 添加滚动条样式
+                xaxis=dict(
+                    rangeslider=dict(visible=True),  # 启用横向滑动条
+                    showgrid=True,
+                    zeroline=False,
+                    range=[0, 5],
+                ),
+            )
+
+            # 设置表格容器可滚动
+            fig.update_layout(
+                margin=dict(l=10, r=10, t=30, b=10),
+                height=500,
+                width = 1000,
+                xaxis_rangeslider_visible=True,
             )
             return fig
 
@@ -706,10 +974,10 @@ def model1_server(input, output, session, data_r, series_names_r):
         risk_aversion = float(input.risk_aversion.get())
         tau = float(input.tau.get())
 
-        train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns = split_trainTest()
-        train_factor_returns, test_factor_returns, B, Omega_df, Sigma, test_etf_excess_returns = prepStep(train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns)
+        #train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns = split_trainTest()
+        #train_factor_returns, test_factor_returns, B, Omega_df, Sigma, test_etf_excess_returns = prepStep(train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns)
 
-        custom_combination = metricGenerate(
+        custom_combination, portR = metricGenerate(
             risk_aversion,
             tau,
             P_f,
@@ -723,12 +991,24 @@ def model1_server(input, output, session, data_r, series_names_r):
 
         # 将新的一列添加到表格中
         all_results[custom_view_name] = custom_combination
+        all_portR[custom_view_name] = portR
         status_text.set("✅ View added successfully!")
+        
+        view_New = {
+            "name": custom_view_name,  # View名称
+            "risk_aversion": risk_aversion,  # 风险厌恶度
+            "tau": tau,  # tau值
+            "P_f": P_f,
+            "Q_f": Q_f
+        }
+        parameter_sets.append(view_New)
+        print(parameter_sets)
 
         #print(all_results[custom_view_name])
 
         # 更新 CSV 文件（以便表格内容持久化）
         all_results.to_csv("data/processed/7_views.csv")
+        all_portR.to_csv("data/processed/7_portRs.csv")
         view_update_trigger.set(view_update_trigger.get() + 1)
 
     @output
@@ -823,7 +1103,181 @@ def model1_server(input, output, session, data_r, series_names_r):
         df = pd.DataFrame(data)
         
         return df
+    
+    # ✅ Server 部分逻辑
+    @reactive.Effect
+    @reactive.event(input.clear_custom_views)
+    def clear_custom_views():
+        try:
+            # 读取原始版本（仅7个views）
+            raw_path = Path("data/raw/7_views.csv")
+            df_raw = pd.read_csv(raw_path, index_col=0)
 
+            # 覆盖 processed 版本，清除用户自定义组合
+            processed_path = Path("data/processed/7_views.csv")
+            df_raw.to_csv(processed_path)
+
+            # 手动触发视图更新
+            view_update_trigger.set(view_update_trigger.get() + 1)
+            status_text.set("🧹 Cleared all custom views.")
+
+        except Exception as e:
+            print("Error clearing views:", e)
+            status_text.set("❌ Failed to clear custom views.")
+
+    @reactive.event(input.show_results)  # 监听 Show Results 按钮点击事件
+    def update_graph():
+        # 获取用户在UI中的选择
+        view_name = input.view_selection.get()  # 获取用户选择的 View（View A、View B 等）
+        rebalance_step = input.rebalance_step.get()  # 获取用户选择的 Rebalance Step（例如 30、63、252 等）
+
+        # 打印用户选择的值
+        print(f"User selected View: {view_name}")
+        print(f"User selected Rebalance Step (days): {rebalance_step}")
+        print(input.show_benchmark())
+
+        view_data = next((item for item in parameter_sets if item["name"] == view_name), None)
+
+        # 计算 returns_viewG_series 和 returns_series
+        P_f = view_data["P_f"]
+        Q_f = view_data["Q_f"]
+        risk_aversion = view_data["risk_aversion"]
+        tau = view_data["tau"]
+
+        # 计算动态再平衡
+        returns_series = dynamic_rebalancing(
+            tau, train_etf_returns, train_factor_returns, test_etf_returns, test_factor_returns, 
+            window_len=252, rebalance_step=63, risk_aversion=risk_aversion, 
+            P_f=P_f, Q_f=Q_f
+        )
+
+        # for later use
+        save_series = returns_series
+        returns_series_viewS = all_portR[view_name]
+        # 静态组合累积收益
+        cumulative_static = (1 + returns_series_viewS).cumprod()
+        cumulative_dynamic = (1 + returns_series).cumprod()
+        cum_spy = (1 + test_etf_returns["SPY"]).cumprod() 
+
+        cum_spy.index = pd.Index(cum_spy.index)
+        cumulative_dynamic.index = pd.Index(cumulative_dynamic.index)
+
+        cumulative_dynamic.index = cumulative_dynamic.index.astype(str)  # 将 datetime 转为字符串
+        cum_spy.index = cum_spy.index.astype(str)
+
+        # 创建 DataFrame 来保存所有收益数据
+        df_cum = pd.DataFrame({
+            "Dynamic Portfolio": cumulative_dynamic,
+            "Static View G": cumulative_static,
+            "SPY Benchmark": cum_spy
+        })
+            
+        # 创建交互式图表
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=cumulative_static.index, y=cumulative_static, mode='lines', name=f"Static {view_name} Portfolio"))
+        fig.add_trace(go.Scatter(x=cumulative_dynamic.index, y=cumulative_dynamic, mode='lines', name='Dynamic Rebalancing Portfolio'))
+
+        if input.show_benchmark():
+            fig.add_trace(go.Scatter(x=cum_spy.index, y=cum_spy, mode='lines', name='SPY Benchmark', line=dict(color='orange', dash='solid')))  # SPY 基准线
+
+        fig.update_layout(
+            title=f"Cumulative Return: Static vs Dynamic ({view_name})",
+            xaxis_title="Date",
+            yaxis_title="Cumulative Return",
+            template="plotly_white"  # 可设置不同的主题
+        )
+        print("End for update graph")
+
+        return fig
+
+    @output
+    @render_plotly
+    def output_ID_strategy_comparison():
+        return update_graph()
+
+    @output
+    @render.data_frame
+    def comparison_table():
+        print(input.show_results.get())
+        if input.show_results.get() > 0:
+            view_name = input.view_selection.get()  # 获取用户选择的 View（View A、View B 等）
+            rebalance_step = input.rebalance_step.get()  # 获取用户选择的 Rebalance Step（例如 30、63、252 等）
+
+            view_data = next((item for item in parameter_sets if item["name"] == view_name), None)
+
+            # 计算 returns_viewG_series 和 returns_series
+            P_f = view_data["P_f"]
+            Q_f = view_data["Q_f"]
+            risk_aversion = view_data["risk_aversion"]
+            tau = view_data["tau"]
+
+            # 计算动态再平衡
+            returns_series = dynamic_rebalancing(
+                tau, train_etf_returns, train_factor_returns, test_etf_returns, test_factor_returns, 
+                window_len=252, rebalance_step=63, risk_aversion=risk_aversion, 
+                P_f=P_f, Q_f=Q_f
+            )
+
+            print("Return: ")
+            print(returns_series)
+            perf_dynamic = get_perf_stats(returns_series)
+            print(type(perf_dynamic))
+            
+            # 对齐因子和组合收益（可能不同长度）
+            aligned_returns = returns_series.loc[test_factor_returns.index.intersection(returns_series.index)]
+            aligned_factors = test_factor_returns.loc[aligned_returns.index]
+
+            # 回归分析
+            model = LinearRegression().fit(aligned_factors, aligned_returns)
+
+            factor_contrib = model.predict(aligned_factors)
+            residual = aligned_returns - factor_contrib
+            alpha = model.intercept_
+            r_squared = model.score(aligned_factors, aligned_returns)
+
+            # 四舍五入并以百分比格式输出
+            alpha_rounded = round(alpha, 4)
+            factor_contrib_rounded = round(factor_contrib.mean(), 4)
+            residual_rounded = round(residual.mean(), 4)
+            r_squared_rounded = round(r_squared, 4)
+
+            # 格式化为百分比字符串
+            alpha_percent = f"{alpha_rounded * 100:.4f}%"
+            factor_contrib_percent = f"{factor_contrib_rounded * 100:.4f}%"
+            residual_percent = f"{residual_rounded * 100:.4f}%"
+            r_squared_percent = f"{r_squared_rounded * 100:.4f}%"
+
+            # 结果保存为DataFrame
+            perf_dynamic["Hidden Alpha"] = alpha_percent
+            perf_dynamic["Factor Return"] = factor_contrib_percent
+            perf_dynamic["Residual"] = residual_percent
+            perf_dynamic["Factor R sqaured"] = r_squared_percent
+            perf_dynamic = pd.Series(perf_dynamic)
+            print(perf_dynamic)
+            print()
+            print(all_results[view_name])
+            perf_static = pd.Series(all_results[view_name])
+
+            # 合并为 DataFrame
+            df = pd.concat([perf_dynamic, perf_static], axis=1)
+            df.columns = [f"Dynamic_{view_name}", f"Static_{view_name}"]
+            # 合并重复索引（例如两个 "Factor R squared"）
+            df = df.groupby(df.index).first()
+
+            # 自定义行的顺序，确保按期望顺序排列
+            desired_order = [
+                'Mean Daily Return', 'Annualized Return', 'Geometric Return', 'Minimum Daily Return',
+                'Volatility (daily)', 'Volatility (annual)', 'Sharpe Ratio (annual)', 'Skewness',
+                'Kurtosis (excess)', 'Max Drawdown', 'Max 10-Day Drawdown', 'VaR 95% (1-day)',
+                'CVaR 95% (1-day)', 'Hidden Alpha',  'Factor Return', 'Residual', 'Factor R sqaured'
+            ]
+            
+            # 调整行顺序
+            df = df.reindex(desired_order)
+
+            # 打印查看 DataFrame
+            print(df)
+            return df
 
 
 
@@ -832,126 +1286,50 @@ if __name__ == "__main__":
     # Recalculate View A-G when run in main
     pd.options.display.float_format = '{:.16f}'.format
     np.set_printoptions(precision=16, suppress=False)
-
-    parameter_sets = [
-        {   
-            # View A: Growth
-            "name": "View A",
-            "risk_aversion": 2.5,
-            "tau": 0.025,
-            "P_f": np.array([
-                [1, 0, 0, 0, 0, 0], 
-                [0, 0, 0, 0, 0, 1],
-                [0, 0, -1, 0, 0, 0]
-            ]),
-            "Q_f": np.array([
-                [0.0002],
-                [0.0003],
-                [0.0001]
-            ])
-        },
-        {
-            "name": "View B",
-            "risk_aversion": 2.5,
-            "tau": 0.025,
-            "P_f": np.array([
-                [-1, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, -1],
-                [0, 0, 0, 1, 0, 0]
-            ]),
-            "Q_f": np.array([
-                [0.0001],
-                [0.0002],
-                [0.0003]
-            ])
-        },
-        {
-            "name": "View C",
-            "risk_aversion": 2.5,
-            "tau": 0.025,
-            "P_f": np.array([
-                [0, 1, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, -1]
-            ]),
-            "Q_f": np.array([
-                [0.0003],
-                [0.0001]
-            ])
-        },
-        {
-            "name": "View D",
-            "risk_aversion": 2.5,
-            "tau": 0.025,
-            "P_f": np.array([
-                [0, 0, 1, 0, 0, 0],
-                [0, 0, 0, 0, 1, 0],
-                [0, 0, 0, 0, 0, -1]
-            ]),
-            "Q_f": np.array([
-                [0.0004],
-                [0.0003],
-                [0.0002]
-            ])
-        },
-        {
-            "name": "View E",
-            "risk_aversion": 2.5,
-            "tau": 0.025,
-            "P_f": np.array([
-                [1, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 1],
-                [0, 1, 0, 0, 0, 0],
-                [0, 0, 0, 1, 0, 0]
-            ]),
-            "Q_f": np.array([
-                [0.0001],
-                [0.00015],
-                [0.0002],
-                [0.00025]
-            ])
-        },
-        {
-            "name": "View F",
-            "risk_aversion": 2.5,
-            "tau": 0.025,
-            "P_f": np.array([
-                [1, 0, 0, 0, 0, 0],
-                [0, 0, 1, 0, 0, 0],
-                [0, 0, 0, 0, 0, -1]
-            ]),
-            "Q_f": np.array([
-                [0.0001],
-                [0.0003],
-                [0.0002]
-            ])
-        },
-        {
-            "name": "View G",
-            "risk_aversion": 2.5,
-            "tau": 0.025,
-            "P_f": np.array([
-                [1, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 1]
-            ]),
-            "Q_f": np.array([
-                [0.07/252],
-                [0.03/252]
-            ])
-        }
-        # 你可以继续添加更多组合
-    ]
     
     # 加载和划分数据
     train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns = split_trainTest()
     # 计算step1 -- 不需要反复计算的部分
     train_factor_returns, test_factor_returns, B, Omega_df, Sigma, test_etf_excess_returns = prepStep(train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns)
+    '''
+    print("test_factor_returns 索引类型:", type(test_factor_returns.index))
+    print("test_factor_returns 时间范围:", test_factor_returns.index.min(), "至", test_factor_returns.index.max())
+
+    
+    # 从 parameter_sets 找到 View A 对应的 P_f 和 Q_f
+    view_name = "View G"
+    view_data = next((item for item in parameter_sets if item["name"] == view_name), None)
+
+    rebalance_step = 63
+    P_f = view_data["P_f"]
+    Q_f = view_data["Q_f"]
+    risk_aversion = view_data["risk_aversion"]
+    tau = view_data["tau"]
+    print(f"P_f for {view_name}:", P_f)
+    print(f"Q_f for {view_name}:", Q_f)
+    print(risk_aversion)
+    print(tau)
+
+    # 计算动态再平衡
+    returns_series = dynamic_rebalancing(
+        tau, train_etf_returns, train_factor_returns, test_etf_returns, test_factor_returns, 
+        window_len=252, rebalance_step=rebalance_step, risk_aversion=risk_aversion, 
+        P_f=P_f, Q_f=Q_f
+    )
+
+    all_results = pd.read_csv("data/processed/7_views.csv", index_col=0)
+    all_portR = pd.read_csv("data/processed/7_portRs.csv", index_col=0)
+    print(returns_series) #dynamic
+    print(all_portR["View G"])
+
 
     all_results = {}
+    all_portR = {}
 
     for params in parameter_sets:
         print(f"🔍 Running: {params['name']}")
         
-        result = metricGenerate(
+        result, portR = metricGenerate(
             params["risk_aversion"],
             params["tau"],
             params["P_f"],
@@ -965,22 +1343,30 @@ if __name__ == "__main__":
     
         # 存储结果
         all_results[params["name"]] = result
+        all_portR[params["name"]] = portR
 
     # 转成DataFrame展示
     df_results = pd.DataFrame(all_results)
     print(df_results)
+    df_results1 = pd.DataFrame(all_portR)
+    print(df_results1)
 
     save_path = Path("data/processed/7_views.csv")
     df_results.to_csv(save_path)
     copy_path = Path("data/raw/7_views.csv")
-    df_results.to_csv(save_path)
+    df_results.to_csv(copy_path)
+
+    save_path1 = Path("data/processed/7_portRs.csv")
+    df_results1.to_csv(save_path1)
+    copy_path1 = Path("data/raw/7_portRs.csv")
+    df_results1.to_csv(copy_path1)
+
 
 
     # 真正的反复计算部分
-    #perf_metrics = metricGenerate(risk_aversion, tau, P_f, Q_f, Sigma, B, Omega_df, test_etf_excess_returns, test_factor_returns)
+    #perf_metrics, portR = metricGenerate(risk_aversion, tau, P_f, Q_f, Sigma, B, Omega_df, test_etf_excess_returns, test_factor_returns)
     
 
-    '''
     results = {
         "Mean Daily Return": mean_return,
         "Annualized Return": annual_return,
