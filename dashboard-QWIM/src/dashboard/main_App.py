@@ -100,8 +100,9 @@ from shiny import App, reactive, render, ui
 from src.dashboard.modules.analysis_module import analysis_server, analysis_ui
 from src.dashboard.modules.inputs_module import inputs_server, inputs_ui
 from src.dashboard.modules.black_litterman import model1_ui, model1_server
-#from src.dashboard.modules.results_module import results_server, results_ui
-#from src.dashboard.modules.portfolios_module import portfolios_server, portfolios_ui
+from src.dashboard.modules.model2 import model2_ui, model2_server
+from src.dashboard.modules.model3 import model3_ui, model3_server
+from src.dashboard.modules.model4 import model4_ui, model4_server
 
 def get_data():
     """Load the time series data from CSV file.
@@ -201,8 +202,10 @@ app_UI = ui.page_navbar(
             ui.navset_tab(
                 ui.nav_panel("Inputs", inputs_ui("ID_inputs")),
                 ui.nav_panel("Data Analysis", analysis_ui("ID_analysis")),
-                ui.nav_panel("Black-Litterman Model", model1_ui("ID_model1"),  # 使用新导入的 UI 函数
-),
+                ui.nav_panel("Black-Litterman Model", model1_ui("ID_model1")),
+                ui.nav_panel("Model 2", model2_ui("ID_model1")),
+                ui.nav_panel("Model 3", model3_ui("ID_model1")),
+                ui.nav_panel("Model 4", model4_ui("ID_model1")),
                 ## add more or back more
                 id="main_tabs",
             ),
@@ -768,6 +771,27 @@ def app_Server(input, output, session):
         logger.info("Results module initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing black-litterman module: {str(e)}")
+    
+    try:
+        logger.info("Initializing Model 2 module...")
+        model2_server("ID_model2", data_r, series_names_r)
+        logger.info("Model 2 module initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing Model 2 module: {str(e)}")
+
+    try:
+        logger.info("Initializing Model 3 module...")
+        model3_server("ID_model3", data_r, series_names_r)
+        logger.info("Model 3 module initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing Model 3 module: {str(e)}")
+
+    try:
+        logger.info("Initializing Model 4 module...")
+        model4_server("ID_model4", data_r, series_names_r)
+        logger.info("Model 4 module initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing Model 4 module: {str(e)}")
 
     current_tab = reactive.Value("Inputs")  # Default tab
 
