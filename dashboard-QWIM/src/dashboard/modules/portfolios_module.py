@@ -944,7 +944,6 @@ def portfolios_server(input, output, session, inputs_data=None, data_r=None):
             try:
                 weights_long = pd.melt(
                     plot_df,
-                    id_vars=["Date"],
                     value_vars=components,  # Use only valid component columns
                     var_name="Component",
                     value_name="Weight"

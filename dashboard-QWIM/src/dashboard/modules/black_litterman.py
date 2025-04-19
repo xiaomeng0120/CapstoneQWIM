@@ -29,6 +29,7 @@ import cvxpy as cp
 from numpy.linalg import pinv
 from sklearn.linear_model import LinearRegression
 from scipy.optimize import minimize
+import copy
 
 import logging
 logger = logging.getLogger(__name__)
@@ -141,6 +142,8 @@ parameter_sets = [
         }
         # 你可以继续添加更多组合
     ]
+
+parameter_sets_copy = copy.deepcopy(parameter_sets)
 
 def load_data():
     """   拿到两个数据集:ETF和ff5+mom   """
@@ -549,12 +552,15 @@ def dynamic_rebalancing(tau, train_etf_returns, train_factor_returns, test_etf_r
         returns_history.extend(future_ret)
         weights_history.append(w_opt)
 
-        # 使用 t 的值来获取 test_etf_returns 的日期索引
-        if t < len(test_etf_returns):
-            dates_history.append(test_etf_returns.index[t])  # 确保 t 在范围内
+        dates_history.append(train_etf_returns.index[t])  # 确保 t 在范围内
+
+    # 创建权重时间序列 DataFrame
+    weights_df = pd.DataFrame(weights_history, index=dates_history, columns=train_etf_returns.columns)
+    print("******************")
+    print()
 
     # 返回最终收益序列
-    return pd.Series(returns_history, index=test_etf_returns.index[start_idx:start_idx + len(returns_history)])
+    return pd.Series(returns_history, index=test_etf_returns.index[start_idx:start_idx + len(returns_history)]), weights_df
 
 def get_perf_stats(return_series):
     mean_daily = return_series.mean()
@@ -718,13 +724,18 @@ def model1_ui():
                                         min=30, max=252, value=63, step=1),
                         ui.h4("Strategy Selection"),
                         ui.input_select("view_selection", "Select View:", 
-                                        choices=["View A", "View B", "View C", "View D", "View E", "View F", "View G"],  # Get choices from reactive variable
-                                        selected="View G"),
+                                        choices=[]),
                                         ui.input_action_button("show_results", "Show Results", class_="btn-primary"),
                                         ui.input_checkbox("show_benchmark", "Show Benchmark (SPY)", value=False),  # 添加复选框
+                        ui.h6("Clicking the button to interact with it and see result!")
                     ),
                     ui.h3("Strategy Performance Comparison"),
-                    ui.h6('Press "Show Results" to view it!'),
+                    ui.markdown("""  
+                        📝 Please note that it might take a little time for the result to update.⏳  
+                            
+                        *If you'd like to see the newly selected view combination, refresh the page, 
+                        the updated view will appear in the dropdown menu.*
+                        """),
                     output_widget("output_ID_strategy_comparison"),
                     ui.hr(),
                     ui.output_data_frame("comparison_table") 
@@ -735,20 +746,33 @@ def model1_ui():
                 ui.layout_sidebar(
                     ui.sidebar(
                         ui.h4("Rolling Window Length"),
-                        ui.input_slider("ID_window_length", "Select Rolling Window Length:", min=20, max=250, value=60, step=10),
+                        ui.input_slider("ID_window_length", "Select Rolling Window Length:", min=20, max=365, value=252, step=10),
+                        ui.h4("Strategy Selection"),
+                        ui.input_select("view_roll_selection", "Select View:", 
+                                        choices=[]),
+                        ui.input_action_button("show_roll_results", "Show Plots", class_="btn-primary"),
+                        ui.h6("Clicking the button to interact with it and see result!")
                     ),
                     ui.h3("Performance Metrics"),
-                    ui.output_ui("output_ID_rolling_window_performance"),
+                    ui.markdown("""  
+                        📝 Please note that it might take a little time for the result to update.⏳  
+                            
+                        *If you'd like to see the newly selected view combination, refresh the page, 
+                        the updated view will appear in the dropdown menu.*
+                        """),
+                    output_widget("rolling_performance_plot"),
                 ),
             ),
             ui.nav_panel(
                 "Stress Testing",
                 ui.layout_sidebar(
                     ui.sidebar(
-                        ui.h4("Stress Test Parameters"),
-                        ui.input_select("ID_stress_test_type", "Select Stress Test Type:", choices=["Historical", "Monte Carlo"], selected="Historical"),
+                        ui.h4("Strategy Selection"),
+                        ui.input_select("view_stress_selection", "Select View:", 
+                                        choices=[]),
+                        ui.h6("Update takes a little time.⏳")
                     ),
-                    ui.h3("Stress Test Results"),
+                    ui.h3("Stress Testing: Crisis Preiod Comparsion"),
                     output_widget("output_ID_stress_test_results"),
                 ),
             ),
@@ -756,11 +780,17 @@ def model1_ui():
                 "Weights",
                 ui.layout_sidebar(
                     ui.sidebar(
-                        ui.h4("Portfolio Weights Options"),
-                        ui.input_select("ID_portfolio_weights_type", "Select Weights Type:", choices=["Equal", "Risk-based", "Market-cap"], selected="Equal"),
+                        ui.h4("Strategy Selection"),
+                        ui.input_select("view_weights_selection", "Select View:", 
+                                        choices=[]),
+                        ui.h6("Update takes a little time.⏳")
                     ),
                     ui.h3("Portfolio Weights Visualization"),
                     output_widget("output_ID_portfolio_weights"),
+                    ui.h4("Weight Distribution"),
+                    output_widget("output_ID_weight_distribution_plot"),
+                    ui.h4("Component Summary"),
+                    ui.output_ui("output_ID_weight_summary_table"),
                 ),
             ),
         ),
@@ -802,6 +832,7 @@ def model1_server(input, output, session, data_r, series_names_r):
     train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns = split_trainTest()
     train_factor_returns, test_factor_returns, B, Omega_df, Sigma, test_etf_excess_returns = prepStep(train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns)
     save_series = 0
+    temp_weights = reactive.Value(None)
 
     # ✅ 初始化状态文本
     status_text = reactive.Value("Ready")
@@ -815,6 +846,45 @@ def model1_server(input, output, session, data_r, series_names_r):
     # 在此初始化一个存储表格的地方
     all_results = pd.read_csv("data/processed/7_views.csv", index_col=0)
     all_portR = pd.read_csv("data/processed/7_portRs.csv", index_col=0)
+
+    # Update series selection dropdowns when series names change
+    @reactive.effect
+    def _update_series_selections():
+        """Update series selection dropdowns with available series names.
+        
+        This effect updates the dropdown menus whenever the available
+        series names change, ensuring UI elements stay synchronized with
+        available data.
+        """
+        print("findout")
+        data_path = Path("data/processed/7_views.csv")
+        new_data = pd.read_csv(data_path, index_col=0)
+        series_names = new_data.columns.tolist()
+        print(series_names)
+
+        ui.update_select(
+            "view_selection",
+            choices=series_names,
+            selected=series_names[6] if series_names else None,
+        )
+        
+        ui.update_select(
+            "view_roll_selection",
+            choices=series_names,
+            selected=series_names[6] if series_names else None,
+        )
+
+        ui.update_select(
+            "view_stress_selection",
+            choices=series_names,
+            selected=series_names[6] if series_names else None,
+        )
+
+        ui.update_select(
+            "view_weights_selection",
+            choices=series_names,
+            selected=series_names[6] if series_names else None,
+        )
 
     @output
     @render_plotly
@@ -1092,10 +1162,10 @@ def model1_server(input, output, session, data_r, series_names_r):
                 "MKT↑, MOM↑, HML↓", "MKT↓, MOM↓, RMW↑", "SMB↑, MOM↓", "HML↑, CMA↑, MOM↓",
                 "MKT↑, MOM↑, SMB↑, RMW↑", "MKT↑, HML↑, MOM↓", "MKT↑, MOM↑"
             ],
-            "Expected Return (Q_f)": [
-                "[0.0002, 0.0003, -0.0001]", "[-0.0001, -0.0002, 0.0003]", "[0.0003, -0.0001]",
-                "[0.0004, 0.0003, -0.0002]", "[0.0001, 0.00015, 0.0002, 0.00025]",
-                "[0.0001, 0.0003, -0.0002]", "[0.07/252, 0.03/252]"
+            "Expected Daily Return (Q_f)": [
+                "[0.02%, 0.03%, -0.01%]", "[-0.01%, -0.02%, 0.03%]", "[0.03%, -0.01%]",
+                "[0.04%, 0.03%, -0.02%]", "[0.01%, 0.015%, 0.02%, 0.025%]",
+                "[0.01%, 0.03%, -0.02%]", "[0.07%/252, 0.03%/252]"
             ]
         }
         
@@ -1113,9 +1183,16 @@ def model1_server(input, output, session, data_r, series_names_r):
             raw_path = Path("data/raw/7_views.csv")
             df_raw = pd.read_csv(raw_path, index_col=0)
 
+            raw_pathR = Path("data/raw/7_portRs.csv")
+            df_rawR = pd.read_csv(raw_pathR, index_col=0)
+            parameter_sets = parameter_sets_copy
+            print(parameter_sets)
+
             # 覆盖 processed 版本，清除用户自定义组合
             processed_path = Path("data/processed/7_views.csv")
             df_raw.to_csv(processed_path)
+            processed_pathR = Path("data/processed/7_portRs.csv")
+            df_rawR.to_csv(processed_pathR)
 
             # 手动触发视图更新
             view_update_trigger.set(view_update_trigger.get() + 1)
@@ -1130,6 +1207,8 @@ def model1_server(input, output, session, data_r, series_names_r):
         # 获取用户在UI中的选择
         view_name = input.view_selection.get()  # 获取用户选择的 View（View A、View B 等）
         rebalance_step = input.rebalance_step.get()  # 获取用户选择的 Rebalance Step（例如 30、63、252 等）
+        window = input.ID_window_length()
+        
 
         # 打印用户选择的值
         print(f"User selected View: {view_name}")
@@ -1137,6 +1216,7 @@ def model1_server(input, output, session, data_r, series_names_r):
         print(input.show_benchmark())
 
         view_data = next((item for item in parameter_sets if item["name"] == view_name), None)
+        #print(parameter_sets)
 
         # 计算 returns_viewG_series 和 returns_series
         P_f = view_data["P_f"]
@@ -1145,9 +1225,9 @@ def model1_server(input, output, session, data_r, series_names_r):
         tau = view_data["tau"]
 
         # 计算动态再平衡
-        returns_series = dynamic_rebalancing(
+        returns_series, weights_df = dynamic_rebalancing(
             tau, train_etf_returns, train_factor_returns, test_etf_returns, test_factor_returns, 
-            window_len=252, rebalance_step=63, risk_aversion=risk_aversion, 
+            window_len=window, rebalance_step=rebalance_step, risk_aversion=risk_aversion, 
             P_f=P_f, Q_f=Q_f
         )
 
@@ -1202,6 +1282,7 @@ def model1_server(input, output, session, data_r, series_names_r):
         if input.show_results.get() > 0:
             view_name = input.view_selection.get()  # 获取用户选择的 View（View A、View B 等）
             rebalance_step = input.rebalance_step.get()  # 获取用户选择的 Rebalance Step（例如 30、63、252 等）
+            window = input.ID_window_length()
 
             view_data = next((item for item in parameter_sets if item["name"] == view_name), None)
 
@@ -1212,9 +1293,9 @@ def model1_server(input, output, session, data_r, series_names_r):
             tau = view_data["tau"]
 
             # 计算动态再平衡
-            returns_series = dynamic_rebalancing(
+            returns_series, weights_df = dynamic_rebalancing(
                 tau, train_etf_returns, train_factor_returns, test_etf_returns, test_factor_returns, 
-                window_len=252, rebalance_step=63, risk_aversion=risk_aversion, 
+                window_len=window, rebalance_step=rebalance_step, risk_aversion=risk_aversion, 
                 P_f=P_f, Q_f=Q_f
             )
 
@@ -1278,7 +1359,452 @@ def model1_server(input, output, session, data_r, series_names_r):
             # 打印查看 DataFrame
             print(df)
             return df
+    
+    @reactive.event(input.show_roll_results)
+    def rolling_performance():
+        window = input.ID_window_length()  # 滚动窗口长度
+        view_name = input.view_roll_selection()  # 获取投资者视图
+        min_periods = 1
 
+        print(window)
+        print(view_name)
+
+        # 初始化结果 DataFrame
+        rolling_stats = pd.DataFrame(index=test_etf_returns.index)
+        daily_portfolio_return = all_portR[view_name]
+        
+        # 初始化结果 DataFrame（索引与 daily_portfolio_return 一致）
+        rolling_stats = pd.DataFrame(index=daily_portfolio_return.index)
+
+        # 填充缺失值为0（可选）
+        daily_portfolio_return = daily_portfolio_return.fillna(0)
+
+        rolling_product = (
+            (1 + daily_portfolio_return)
+            .rolling(window, min_periods=min_periods)
+            .apply(np.prod, raw=True)
+        )
+        rolling_stats["Annualized Return"] = rolling_product ** (252 / window) - 1
+
+        # ----------------------------------------
+        # 2. 年化波动率
+        rolling_stats["Volatility"] = (
+            daily_portfolio_return
+            .rolling(window, min_periods=min_periods)
+            .std() * np.sqrt(252)
+        )
+
+        # ----------------------------------------
+        # 3. 夏普比率（处理分母为零的情况）
+        # 添加一个极小值 epsilon 避免除以零
+        epsilon = 1e-8
+        rolling_stats["Sharpe Ratio"] = (
+            rolling_stats["Annualized Return"] / (rolling_stats["Volatility"] + epsilon)
+        )
+
+        # ----------------------------------------
+        # 4. 最大回撤（修正滚动窗口逻辑）
+        cum_returns = (1 + daily_portfolio_return).cumprod()
+
+        # 计算滚动窗口内的累计收益最大值
+        rolling_max = cum_returns.rolling(window, min_periods=min_periods).max()
+
+        # 计算回撤率
+        drawdown = cum_returns / rolling_max - 1
+
+        # 计算滚动窗口内的最大回撤（负值最小即为最大回撤）
+        rolling_stats["Max Drawdown"] = (
+            drawdown
+            .rolling(window, min_periods=min_periods)
+            .min()
+        )
+
+        # ----------------------------------------
+        # 5. 去除全行空值（可选）
+        # 若需保留部分有效值，可跳过此步骤
+        rolling_stats = rolling_stats.dropna()
+
+        print("Done.")
+
+        fig = make_subplots(
+            rows=2, cols=2,  # 布局为2行2列
+            subplot_titles=["Annualized Return", "Volatility", "Sharpe Ratio", "Max Drawdown"],  # 子图标题
+            vertical_spacing=0.10,  # 增加垂直间距，减小行间距
+        )
+
+        # 添加四个性能指标的曲线
+        fig.add_trace(
+            go.Scatter(x=rolling_stats.index, y=rolling_stats["Annualized Return"], mode='lines', name="Annualized Return"),
+            row=1, col=1
+        )
+
+        fig.add_trace(
+            go.Scatter(x=rolling_stats.index, y=rolling_stats["Volatility"], mode='lines', name="Volatility"),
+            row=1, col=2
+        )
+
+        fig.add_trace(
+            go.Scatter(x=rolling_stats.index, y=rolling_stats["Sharpe Ratio"], mode='lines', name="Sharpe Ratio"),
+            row=2, col=1
+        )
+
+        fig.add_trace(
+            go.Scatter(x=rolling_stats.index, y=rolling_stats["Max Drawdown"], mode='lines', name="Max Drawdown"),
+            row=2, col=2
+        )
+
+        # 更新布局
+        fig.update_layout(
+            title=f"Rolling Performance Metrics ({view_name})",  # 图表的总标题
+            title_x=0.5,  # Title 居中
+            title_y=0.98,  # Title 上移
+            height=600,  # 图表高度
+            width=600,  # 图表宽度
+            showlegend=False,  # 去除图例（如果需要的话可以打开）
+            margin=dict(l=50, r=50, t=80, b=50),  # 设置边距，避免标题遮挡
+            template="plotly_white"
+        )
+
+        print("End for painting")
+
+        return fig
+        
+    # 渲染图表
+    @output
+    @render_plotly
+    def rolling_performance_plot():
+        return rolling_performance()
+    
+    # Generate time evolution plot
+    @output
+    @render_widget
+    def output_ID_stress_test_results():
+        view_name = input.view_stress_selection()
+        print(view_name)
+
+        crisis_periods = {
+            "COVID Crash (2020)": ("2020-02-01", "2020-04-30"),
+            "Inflation Shock (2022)": ("2022-01-01", "2022-06-30"),
+            "Energy Crisis (2022-2023)": ("2022-01-01", "2023-12-31"),
+            "SVB Panic (2023)": ("2023-03-01", "2023-05-01")
+        }
+
+        # 创建 2x2 图表布局
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=list(crisis_periods.keys()),  # 设置每个子图的标题
+            vertical_spacing=0.1  # 设置子图间的垂直间距
+        )
+
+        daily_portfolio_return = all_portR[view_name]
+
+        for idx, (name, (start, end)) in enumerate(crisis_periods.items()):
+            # 提取各时期的收益率
+            perf_crisis = daily_portfolio_return.loc[start:end]
+            benchmark_crisis = test_etf_returns["SPY"].loc[start:end]
+            benchmark_crisis.index = pd.Index(benchmark_crisis.index)
+            benchmark_crisis.index = benchmark_crisis.index.astype(str)
+
+            # 绘制 View G 静态组合和 SPY 累计回报
+            fig.add_trace(
+                go.Scatter(x=perf_crisis.index, y=(1 + perf_crisis).cumprod(), mode='lines', name="View G Static", line=dict(color="blue")),
+                row=(idx // 2) + 1, col=(idx % 2) + 1
+            )
+            fig.add_trace(
+                go.Scatter(x=benchmark_crisis.index, y=(1 + benchmark_crisis).cumprod(), mode='lines', name="SPY", line=dict(color="orange", dash="dash")),
+                row=(idx // 2) + 1, col=(idx % 2) + 1
+            )
+
+        # 更新布局
+        fig.update_layout(
+            title=f"Stress Testing for {view_name}",
+            title_x=0.5,
+            title_y=0.95,
+            height=800,
+            width=1000,
+            showlegend=True,
+            margin=dict(t=100, b=50, l=50, r=50),  # 增加上、下、左、右边距
+            template="plotly_white",  # 设置图表的主题
+        )
+
+        # 更新每个子图的布局
+        fig.update_xaxes(title_text="Date", row=1, col=1)
+        fig.update_yaxes(title_text="Cumulative Return", row=1, col=1)
+        fig.update_xaxes(title_text="Date", row=1, col=2)
+        fig.update_yaxes(title_text="Cumulative Return", row=1, col=2)
+        fig.update_xaxes(title_text="Date", row=2, col=1)
+        fig.update_yaxes(title_text="Cumulative Return", row=2, col=1)
+        fig.update_xaxes(title_text="Date", row=2, col=2)
+        fig.update_yaxes(title_text="Cumulative Return", row=2, col=2)
+
+        return fig
+    
+    @output
+    @render_widget
+    def output_ID_portfolio_weights():
+        print("hey")
+        view_name = input.view_weights_selection.get()
+        window = input.ID_window_length()
+        print(view_name)
+
+        view_data = next((item for item in parameter_sets if item["name"] == view_name), None)
+
+        # 计算 returns_viewG_series 和 returns_series
+        P_f = view_data["P_f"]
+        Q_f = view_data["Q_f"]
+        risk_aversion = view_data["risk_aversion"]
+        tau = view_data["tau"]
+
+        # 计算动态再平衡
+        returns_series, weights_df = dynamic_rebalancing(
+            tau, train_etf_returns, train_factor_returns, test_etf_returns, test_factor_returns, 
+            window_len=window, rebalance_step=63, risk_aversion=risk_aversion, 
+            P_f=P_f, Q_f=Q_f
+        )
+        temp_weights.set(weights_df)
+        print(weights_df)
+
+        # 转换为百分比格式 (可选)
+        weights_df = weights_df * 100  # 将所有权重转换为百分比
+        #weights_df.rename(columns={weights_df.columns[0]: "Date"}, inplace=True)
+        print(weights_df.index)
+
+        
+        weights_df.index = pd.Index(weights_df.index)
+        weights_df.index = weights_df.index.astype(str)
+        
+
+        # 创建 Plotly 图表
+        fig = go.Figure()
+
+        # 为每一列（ETF）添加堆积区域
+        for col in weights_df.columns:
+            fig.add_trace(go.Scatter(
+                x=weights_df.index, 
+                y=weights_df[col], 
+                mode='lines', 
+                stackgroup='one',  # 堆积区域图
+                name=col,
+                hovertemplate='%{x}<br>' + col + ' : %{y:.2f}%'
+            ))
+
+        # 设置布局属性
+        fig.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Weight (%)",
+            template="plotly_white",  # 可选择其他主题
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.05,  # Increased from 1.02 to 1.12 to add more space
+                xanchor="right",
+                x=1
+            ),
+            margin=dict(
+                l=40, 
+                r=40, 
+                t=100,  # Increased from default to add more space at the top
+                b=40
+            ),
+            hovermode="x unified",
+            title=dict(
+                text = f"Portfolio Weight Evolution Over Time for {view_name}",
+                y=0.98,  # Move title position slightly higher
+                yanchor="top"
+            ),
+            height=600,
+            dragmode="pan",
+        )
+        # 返回图表
+        return fig
+    
+
+    @output
+    @render_widget
+    def output_ID_weight_distribution_plot():
+        print("hey")
+        view_name = input.view_weights_selection.get()
+        # 获取权重数据
+        weights_df = temp_weights.get()  # 假设temp_weights.get()返回的是一个DataFrame
+        
+        # Get components (all columns except Date)
+        components = [col for col in weights_df.columns if col != "Date" and col != "RowSum"]
+        print(components)
+        # Create working copy of the dataframe
+        plot_df = weights_df.copy()
+
+        # Convert to long format for box plot - using the validated components only
+        weights_long = pd.melt(
+            plot_df,
+            ignore_index=False,
+            value_vars=components,  # Use only valid component columns
+            var_name="Component",
+            value_name="Weight"
+        )
+
+         # Define y-axis title
+        y_title = "Weight (%)" 
+
+        fig = px.box(
+            weights_long,
+            x="Component",
+            y="Weight",
+            title=f"Weight Distribution by Component for {view_name}",
+            labels={"Component": "Component", "Weight": y_title},
+            color="Component",
+            template="plotly_white",
+            # Increase the height to improve vertical scaling
+            height=600  # Increased from default height
+        )
+        
+        return fig
+    
+
+    @reactive.calc
+    def calculate_weight_statistics():
+        """Calculate statistics for portfolio weights."""
+        weights_df = temp_weights.get()
+        
+        # Return empty DataFrame if no data
+        if weights_df.empty:
+            return pd.DataFrame()
+            
+        # Get components (all columns except Date)
+        components = [col for col in weights_df.columns if col != "Date"]
+        
+        stats = []
+        
+        for comp in components:
+            comp_weights = weights_df[comp].copy()
+            
+            # Calculate statistics - ensure all values are numeric to avoid string mixing
+            try:
+                min_weight = float(comp_weights.min())
+                max_weight = float(comp_weights.max())
+                mean_weight = float(comp_weights.mean())
+                std_dev = float(comp_weights.std())
+            except (ValueError, TypeError):
+                # Handle any conversion errors
+                min_weight = 0.0
+                max_weight = 0.0
+                mean_weight = 0.0
+                std_dev = 0.0
+                
+            # Add as a proper dictionary with numeric values
+            stats.append({
+                "Component": str(comp),  # Ensure component is a string
+                "Min Weight": min_weight,
+                "Max Weight": max_weight,
+                "Mean Weight": mean_weight,
+                "Std Dev": std_dev
+            })
+        
+        # Create DataFrame
+        stats_df = pd.DataFrame(stats)
+        
+        # Sort by mean weight if we have data
+        if not stats_df.empty:
+            stats_df = stats_df.sort_values("Mean Weight", ascending=False)
+        
+        return stats_df
+    
+    @output
+    @render.ui
+    def output_ID_weight_summary_table():
+        print("hi")
+        view_name = input.view_weights_selection.get()
+        
+        """Generate weight summary table using great_tables."""
+        from great_tables import GT
+        
+        try:
+            stats_df = calculate_weight_statistics()
+            
+            if stats_df.empty:
+                return ui.p("No portfolio weights data available")
+            
+            # Create great_tables object
+            gt_table = (
+                GT(stats_df)
+                .tab_header(
+                    title=f"Portfolio Component Statistics for {view_name}",
+                    subtitle="Summary of component weights over selected time period"
+                )
+                .fmt_number(
+                    columns=["Min Weight", "Max Weight", "Mean Weight", "Std Dev"],  # Exclude "Current Weight"
+                    decimals=2
+                )
+                .tab_source_note(
+                    source_note="Data calculated from portfolio weights file"
+                )
+            )
+            
+            # Try different HTML rendering methods
+            try:
+                # Try direct HTML rendering first
+                html_content = gt_table.as_raw_html()
+                return ui.HTML(html_content)
+            except Exception as e1:
+                print(f"First rendering attempt failed: {str(e1)}")
+                try:
+                    # Try the render() method next with the required context parameter
+                    html_content = gt_table.render(context="html")  # Add context parameter
+                    return ui.HTML(html_content)
+                except Exception as e2:
+                    print(f"Second rendering attempt failed: {str(e2)}")
+                    try:
+                        # Fallback to a custom HTML table when GT rendering fails
+                        html = "<table border='1' style='width:100%; border-collapse:collapse;'>"
+                        html += "<thead><tr style='background-color:#f2f2f2;'>"
+                        html += "<th style='padding:8px; text-align:left;'>Component</th>"
+                        html += "<th style='padding:8px; text-align:right;'>Min Weight</th>"
+                        html += "<th style='padding:8px; text-align:right;'>Max Weight</th>"
+                        html += "<th style='padding:8px; text-align:right;'>Mean Weight</th>"
+                        html += "<th style='padding:8px; text-align:right;'>Std Dev</th>"
+                        html += "</tr></thead><tbody>"
+                        
+                        # Add rows
+                        for _, row in stats_df.iterrows():
+                            html += "<tr>"
+                            html += f"<td style='padding:8px; border-top:1px solid #ddd;'>{row['Component']}</td>"
+                            
+                            # Format numeric columns with 2 decimal places
+                            numeric_cols = ["Min Weight", "Max Weight", "Mean Weight", "Std Dev"]
+                            for col in numeric_cols:
+                                val = row[col]
+                                if pd.notna(val) and isinstance(val, (int, float)):
+                                    formatted_val = f"{val:.2f}"  # No percentage formatting needed
+                                else:
+                                    formatted_val = "N/A"
+                                html += f"<td style='padding:8px; border-top:1px solid #ddd; text-align:right;'>{formatted_val}</td>"
+                            
+                            html += "</tr>"
+                        
+                        html += "</tbody></table>"
+                        html += "<div style='font-size:0.8em; margin-top:10px;'>Data calculated from portfolio weights file</div>"
+                        
+                        return ui.HTML(html)
+                    except Exception as e3:
+                        print(f"All rendering attempts failed: {str(e3)}")
+                        
+                        # Last resort: simple text representation
+                        text_output = ui.div(
+                            ui.h4("Portfolio Component Statistics"),
+                            ui.tags.pre(stats_df.to_string(index=False))
+                        )
+                        return text_output
+        except Exception as e:
+            print(f"Error generating weight summary table: {str(e)}")
+            return ui.div(
+                ui.tags.b("Error generating component statistics"),
+                ui.p(str(e))
+            )
+
+
+
+
+    
 
 
 if __name__ == "__main__":
@@ -1291,11 +1817,8 @@ if __name__ == "__main__":
     train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns = split_trainTest()
     # 计算step1 -- 不需要反复计算的部分
     train_factor_returns, test_factor_returns, B, Omega_df, Sigma, test_etf_excess_returns = prepStep(train_ff_factors, test_ff_factors, train_etf_returns, test_etf_returns)
-    '''
-    print("test_factor_returns 索引类型:", type(test_factor_returns.index))
-    print("test_factor_returns 时间范围:", test_factor_returns.index.min(), "至", test_factor_returns.index.max())
 
-    
+    """
     # 从 parameter_sets 找到 View A 对应的 P_f 和 Q_f
     view_name = "View G"
     view_data = next((item for item in parameter_sets if item["name"] == view_name), None)
@@ -1321,7 +1844,7 @@ if __name__ == "__main__":
     all_portR = pd.read_csv("data/processed/7_portRs.csv", index_col=0)
     print(returns_series) #dynamic
     print(all_portR["View G"])
-
+    """
 
     all_results = {}
     all_portR = {}
@@ -1366,7 +1889,7 @@ if __name__ == "__main__":
     # 真正的反复计算部分
     #perf_metrics, portR = metricGenerate(risk_aversion, tau, P_f, Q_f, Sigma, B, Omega_df, test_etf_excess_returns, test_factor_returns)
     
-
+    """
     results = {
         "Mean Daily Return": mean_return,
         "Annualized Return": annual_return,
@@ -1386,7 +1909,7 @@ if __name__ == "__main__":
         "Residual ν̆(x)": residual_premium,
         "Factor R²_c(x)": R_squared_c
     }
-    '''
+    """
 
     print("Main END")
         
