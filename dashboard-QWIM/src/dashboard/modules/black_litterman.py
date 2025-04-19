@@ -1508,7 +1508,7 @@ def model1_server(input, output, session, data_r, series_names_r):
 
             # 绘制 View G 静态组合和 SPY 累计回报
             fig.add_trace(
-                go.Scatter(x=perf_crisis.index, y=(1 + perf_crisis).cumprod(), mode='lines', name="View G Static", line=dict(color="blue")),
+                go.Scatter(x=perf_crisis.index, y=(1 + perf_crisis).cumprod(), mode='lines', name=f"{view_name} Static", line=dict(color="blue")),
                 row=(idx // 2) + 1, col=(idx % 2) + 1
             )
             fig.add_trace(
