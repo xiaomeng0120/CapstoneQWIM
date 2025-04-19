@@ -1355,6 +1355,7 @@ def model1_server(input, output, session, data_r, series_names_r):
             
             # 调整行顺序
             df = df.reindex(desired_order)
+            df = df.reset_index().rename(columns={"index": "Metrics"})
 
             # 打印查看 DataFrame
             print(df)
