@@ -100,9 +100,9 @@ from shiny import App, reactive, render, ui
 from src.dashboard.modules.analysis_module import analysis_server, analysis_ui
 from src.dashboard.modules.inputs_module import inputs_server, inputs_ui
 from src.dashboard.modules.black_litterman import model1_ui, model1_server
-from src.dashboard.modules.model2 import model2_ui, model2_server
-from src.dashboard.modules.model3 import model3_ui, model3_server
-from src.dashboard.modules.model4 import model4_ui, model4_server
+#from src.dashboard.modules.model2 import model2_ui, model2_server
+#from src.dashboard.modules.model3 import model3_ui, model3_server
+#from src.dashboard.modules.model4 import model4_ui, model4_server
 
 def get_data():
     """Load the time series data from CSV file.
@@ -179,7 +179,7 @@ __build_date__ = "2025-04-17"
 # App UI
 app_UI = ui.page_navbar(
     ui.nav_panel(
-        "Quant Crusaders Team", 
+        "Factor Based Black Litterman Model Visualization", 
         ui.layout_sidebar(
             ui.sidebar(
                 shinyswatch.theme_picker_ui("cosmo"),
@@ -192,9 +192,9 @@ app_UI = ui.page_navbar(
                     ui.tags.li("Analyze key metrics: Explore returns, volatility, Sharpe ratio, and more."),
                     ui.tags.li("Interactive comparison: Compare models based on different assumptions.")
                 ),
-                ui.hr(),
-                ui.a("Capstone Final Report", href="https://docs.google.com/document/d/1W4b-2jRYdd6uWcNfW4JMaI5DPXPapZprtaeNpefX000/edit?usp=sharing", target="_blank"),
-                ui.p("Team Member: Xiaomeng Ren, Fatma Soliman, Ziqian Zhang, Ge Meng"),
+                #ui.hr(),
+                #ui.a("Capstone Final Report", href="https://docs.google.com/document/d/1W4b-2jRYdd6uWcNfW4JMaI5DPXPapZprtaeNpefX000/edit?usp=sharing", target="_blank"),
+                #ui.p("Team Member: Xiaomeng Ren, Fatma Soliman, Ziqian Zhang, Ge Meng"),
                 ui.hr(),
                 ui.p(f"Version: {__version__}"),
                 ui.p(f"Build: {__build_date__}"),
@@ -203,9 +203,9 @@ app_UI = ui.page_navbar(
                 ui.nav_panel("Inputs", inputs_ui("ID_inputs")),
                 ui.nav_panel("Data Analysis", analysis_ui("ID_analysis")),
                 ui.nav_panel("Black-Litterman Model", model1_ui("ID_model1")),
-                ui.nav_panel("Model 2", model2_ui("ID_model1")),
-                ui.nav_panel("Model 3", model3_ui("ID_model1")),
-                ui.nav_panel("Model 4", model4_ui("ID_model1")),
+                #ui.nav_panel("Model 2", model2_ui("ID_model2")),
+                #ui.nav_panel("Model 3", model3_ui("ID_model3")),
+                #ui.nav_panel("Model 4", model4_ui("ID_model4")),
                 ## add more or back more
                 id="main_tabs",
             ),
@@ -771,10 +771,10 @@ def app_Server(input, output, session):
         logger.info("Results module initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing black-litterman module: {str(e)}")
-    
+    '''
     try:
         logger.info("Initializing Model 2 module...")
-        model2_server("ID_model2", data_r, series_names_r)
+        #model2_server("ID_model2", data_r, series_names_r)
         logger.info("Model 2 module initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing Model 2 module: {str(e)}")
@@ -792,6 +792,7 @@ def app_Server(input, output, session):
         logger.info("Model 4 module initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing Model 4 module: {str(e)}")
+    '''
 
     current_tab = reactive.Value("Inputs")  # Default tab
 

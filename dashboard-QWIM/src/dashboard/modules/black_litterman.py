@@ -614,10 +614,10 @@ def model1_ui():
     """
     return ui.page_fluid(
         ui.h2("Factor-based Black-Litterman Model Analysis"),
-        ui.div(
-        ui.markdown('''*This section is handled by Xiaomeng Ren.*'''),
+        #ui.div(
+        #ui.markdown('''*This section is handled by Xiaomeng Ren.*'''),
         # 其他内容
-        ),
+        #),
         ui.navset_tab(
             ui.nav_panel(
                 "Try Model",  # Main Panel Tab
