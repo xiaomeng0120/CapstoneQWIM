@@ -192,9 +192,9 @@ app_UI = ui.page_navbar(
                     ui.tags.li("Analyze key metrics: Explore returns, volatility, Sharpe ratio, and more."),
                     ui.tags.li("Interactive comparison: Compare models based on different assumptions.")
                 ),
-                #ui.hr(),
+                ui.hr(),
                 #ui.a("Capstone Final Report", href="https://docs.google.com/document/d/1W4b-2jRYdd6uWcNfW4JMaI5DPXPapZprtaeNpefX000/edit?usp=sharing", target="_blank"),
-                #ui.p("Team Member: Xiaomeng Ren, Fatma Soliman, Ziqian Zhang, Ge Meng"),
+                ui.p("This dashboard produced by: Xiaomeng Ren"),
                 ui.hr(),
                 ui.p(f"Version: {__version__}"),
                 ui.p(f"Build: {__build_date__}"),

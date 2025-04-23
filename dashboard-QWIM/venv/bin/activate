@@ -35,7 +35,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/Users/renxiaomeng/CapstoneQWIM/dashboard-QWIM/venv"
+VIRTUAL_ENV="/Users/renxiaomeng/Downloads/CapstoneQWIM/dashboard-QWIM/venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
