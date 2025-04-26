@@ -1,192 +1,311 @@
-import datetime
-from shiny import App, ui, render, reactive
-from hrp_model import run_hrp_full, calibrate_hrp
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
+from scipy.spatial.distance import squareform
+import scipy.cluster.hierarchy as sch
+import optuna
+from shiny import App, ui, render, reactive
+import hrp_model
 
-app_ui = ui.page_fluid(
+# ---- UI ----
+app_ui = ui.page_sidebar(
+    ui.sidebar(
+        ui.h2('Hierarchical Risk Parity Dashboard'),
+        ui.input_text('tickers', 'Tickers (comma-separated)',
+            value=','.join(['SPY','IWM','EFA','EEM','AGG','LQD','HYG','TLT',
+                             'GLD','VNQ','DBC','VT','XLE','XLK','UUP'])
+        ),
+        ui.input_date_range('date_range', 'Date range',
+            start='2008-07-01', end='2025-03-01'
+        ),
+        ui.input_select('link_method', 'Linkage Method',
+            choices=['single','complete','average','ward'], selected='complete'
+        ),
+        ui.input_slider('window', 'Estimation Window (days)',
+            min=60, max=756, value=175, step=1
+        ),
+        ui.input_slider('rebalance', 'Rebalance Frequency (days)',
+            min=5, max=126, value=13, step=1
+        ),
+        ui.input_action_button('run', 'Run HRP'),
+        ui.input_action_button('optimize', 'Bayesian Optimize HRP Setting')
+    ),
+    ui.h2('Results'),
     ui.navset_tab(
-        ui.nav_panel("ETF Info",
-            ui.input_text("tickers", "Tickers (comma-separated)",
-                          value="SPY,IWM,EFA,EEM,AGG,LQD,HYG,TLT,GLD,VNQ,DBC,VT,XLE,XLK,UUP"),
-            ui.input_date_range("daterange", "Select Date Range",
-                                start=datetime.date(2008, 7, 1),
-                                end=datetime.date(2025, 3, 1)),
-            ui.output_table("info_prices"),
-            ui.input_text("focus_ticker", "Plot Specific Ticker:", value="SPY"),
-            ui.output_plot("price_plot"),
-            ui.output_plot("log_return_plot")
-        ),
-
-        ui.nav_panel("Correlation & Distance",
-            ui.layout_columns(
-                ui.output_plot("corr_heatmap", height="800px", width="800px"),
-                ui.output_plot("dist_heatmap", height="800px", width="800px")
-            )
-        ),
-
-        ui.nav_panel("Clustering Dendrogram",
-            ui.output_plot("dendro_plot")
-        ),
-
-        ui.nav_panel("Calibration",
-            ui.layout_sidebar(
-                ui.sidebar(
-                    ui.input_slider("calib_window", "Lookback Window (years)",
-                                    min=1, max=5, value=2, step=1),
-                    ui.input_select("chosen_rebalance", "Use Rebalance:",
-                                    {"1M": "1M", "3M": "3M"},
-                                    selected=None),
-                    ui.input_select("chosen_linkage", "Use Linkage:",
-                                    {"single": "single",
-                                     "average": "average",
-                                     "ward": "ward"},
-                                    selected=None),
-                    ui.input_action_button("run_calib", "Run Calibration")
-                ),
-                ui.output_table("calibration_table")
-            )
-        ),
-
-        ui.nav_panel("HRP Weights & Performance",
-            ui.layout_columns(
-                ui.output_table("weights_table", width=5),
-            ),
-            ui.output_plot("cumulative_plot")
-        ),
-
-        ui.nav_panel("Risk Metrics",
-            ui.output_table("metric_table")
+        ui.nav_panel('Asset Relationships', ui.output_plot('corr_heatmap'), ui.output_plot('dist_heatmap')),
+        ui.nav_panel('Dendrogram', ui.output_plot('dendrogram')),
+        ui.nav_panel('Weights', ui.output_table('weights_table'), ui.output_plot('weights_plot')),
+        ui.nav_panel('Performance', ui.output_plot('cumret_plot'), ui.output_plot('drawdown_plot')),
+        ui.nav_panel('Metrics', ui.output_table('metrics_table')),
+        ui.nav_panel('Top Configuration',
+                     ui.HTML(
+                        '<table style="width:50%; margin-bottom:1em;">'
+                        '<tr><th>Parameter</th><th>Value</th></tr>'
+                        '<tr><td>method</td><td>complete</td></tr>'
+                        '<tr><td>window</td><td>175</td></tr>'
+                        '<tr><td>rebalance</td><td>13</td></tr>'
+                        '<tr><td>Sharpe HRP</td><td>0.908908</td></tr>'
+                        '</table>'
+                    ),
+                     ui.h5('Click Bayesian Optimize HRP Setting button to achieve the highest Sharpe ratio.'),
+                     ui.p('This may take a few minutes.'),
+                     ui.output_ui('opt_status'),
+                     ui.output_table('opt_table', spinner=True)),
+        ui.nav_panel(
+            'Validation & Sensitivity',
+            ui.p('This part may take a few time to show the results.'),
+            ui.h4('Out-of-Sample Walk-Forward Sharpe'),
+            ui.output_table('wf_table'),
+            ui.h4('Parameter Sensitivity Heatmap (Sharpe)'),
+            ui.output_plot('sens_plot')
         )
     )
 )
 
+# 
+# ---- Server ----
 def server(input, output, session):
-    # reactive.Value to hold the best calibration row (a pd.Series)
-    best_calib = reactive.Value(None)
+    # Reactive returns
+    @reactive.Calc
+    @reactive.event(input.run, input.optimize)
+    def rets():
+        tickers = [t.strip() for t in input.tickers().split(',')]
+        start, end = input.date_range()
+        _, returns = hrp_model.get_data(tickers, start, end)
+        return returns
 
-    @reactive.calc
-    def base_results():
-        tickers = [t.strip().upper() for t in input.tickers().split(',')]
-        start, end = [d.strftime("%Y-%m-%d") for d in input.daterange()]
-        return run_hrp_full(tickers, start, end)
+    # Linkage
+    @reactive.Calc
+    @reactive.event(input.run)
+    def link_matrix():
+        corr = rets().corr()
+        dist = hrp_model.correlate_distance(corr)
+        return sch.linkage(squareform(dist.values, checks=False), method=input.link_method())
 
-    @reactive.event(input.run_calib)
-    def calibration_results():
-        df = calibrate_hrp(base_results()["returns"],
-                           window_years=input.calib_window())
-        # pick the row with highest Sharpe
-        best = df.sort_values("Sharpe Ratio", ascending=False).iloc[0]
-        best_calib.set(best)
+    # Backtest
+    @reactive.Calc
+    @reactive.event(input.run)
+    def backtest():
+        returns = rets()
+        w = pd.DataFrame(np.nan,index=returns.index, columns=returns.columns, dtype=float)
+        window, freq = input.window(), input.rebalance()
+        for i in range(window, len(returns), freq):
+            train = returns.iloc[i-window:i]
+            w.iloc[i] = hrp_model.hrp_allocation(train, method=input.link_method())
+        w.ffill(inplace=True)
+        hrp_ret = (w.shift(1) * returns).sum(axis=1)
+        eq_ret  = hrp_model.equal_weight_returns(returns)
+        bm_ret  = hrp_model.benchmark_returns(returns)
+        return hrp_ret, eq_ret, bm_ret
+
+    # Status message for optimization
+    opt_status_msg = reactive.Value('')
+
+    # Heatmaps
+    @output
+    @render.plot
+    @reactive.event(input.run)
+    def corr_heatmap():
+        corr = hrp_model.get_correlation_matrix(rets())
+        fig, ax = plt.subplots()
+        cax = ax.matshow(corr, vmin=-1, vmax=1)
+        plt.colorbar(cax, ax=ax)
+        labels = corr.columns
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(labels, rotation=90)
+        ax.set_yticks(range(len(labels)))
+        ax.set_yticklabels(labels)
+        for i in range(len(labels)):
+            for j in range(len(labels)):
+                ax.text(j, i, f"{corr.iloc[i,j]:.2f}", ha='center', va='center', fontsize=6,
+                        color='white' if abs(corr.iloc[i,j])>0.5 else 'black')
+        ax.set_title('Correlation Matrix')
+        plt.tight_layout()
+        return fig
+
+    @output
+    @render.plot
+    @reactive.event(input.run)
+    def dist_heatmap():
+        dist = hrp_model.get_distance_matrix(rets())
+        fig, ax = plt.subplots()
+        cax = ax.matshow(dist, vmin=0, vmax=1)
+        plt.colorbar(cax, ax=ax)
+        labels = dist.columns
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(labels, rotation=90)
+        ax.set_yticks(range(len(labels)))
+        ax.set_yticklabels(labels)
+        for i in range(len(labels)):
+            for j in range(len(labels)):
+                ax.text(j, i, f"{dist.iloc[i,j]:.2f}", ha='center', va='center', fontsize=6,
+                        color='white' if dist.iloc[i,j]>0.5 else 'black')
+        ax.set_title('Distance Matrix')
+        plt.tight_layout()
+        return fig
+
+    # Dendrogram
+    @output
+    @render.plot
+    @reactive.event(input.run)
+    def dendrogram():
+        fig, ax = plt.subplots()
+        sch.dendrogram(link_matrix(), labels=rets().columns.tolist(), ax=ax)
+        ax.set_title('Asset Clustering Dendrogram')
+        plt.tight_layout()
+        return fig
+
+    # Weights
+    @output
+    @render.table
+    @reactive.event(input.run)
+    def weights_table():
+        w = hrp_model.hrp_allocation(rets(), method=input.link_method())
+        return pd.DataFrame({'Ticker': w.index, 'Weight': w.values})
+
+    @output
+    @render.plot
+    @reactive.event(input.run)
+    def weights_plot():
+        w = hrp_model.hrp_allocation(rets(), method=input.link_method())
+        fig, ax = plt.subplots()
+        w.sort_values().plot.barh(ax=ax)
+        ax.set_xlabel('Weight')
+        ax.set_title('HRP Portfolio Weights')
+        plt.tight_layout()
+        return fig
+
+    # Performance
+    @output
+    @render.plot
+    @reactive.event(input.run)
+    def cumret_plot():
+        hrp_ret, eq_ret, bm_ret = backtest()
+        fig, ax = plt.subplots()
+        (1+hrp_ret).cumprod().plot(ax=ax, label='HRP')
+        (1+eq_ret).cumprod().plot(ax=ax, label='Equal Weight')
+        (1+bm_ret).cumprod().plot(ax=ax, label='Benchmark')
+        ax.legend(); ax.set_title('Cumulative Returns'); plt.tight_layout()
+        return fig
+
+    @output
+    @render.plot
+    @reactive.event(input.run)
+    def drawdown_plot():
+        hrp_ret, eq_ret, bm_ret = backtest()
+        cum = lambda s: (1+s).cumprod()
+        dd = lambda s: cum(s)/cum(s).cummax()-1
+        fig, ax = plt.subplots()
+        dd(hrp_ret).plot(ax=ax, label='HRP')
+        dd(eq_ret).plot(ax=ax, label='Equal Weight')
+        dd(bm_ret).plot(ax=ax, label='Benchmark')
+        ax.legend(); ax.set_title('Drawdown'); plt.tight_layout()
+        return fig
+
+    # Metrics Table
+    @output
+    @render.table
+    @reactive.event(input.run)
+    def metrics_table():
+        hrp_ret, eq_ret, bm_ret = backtest()
+        met_hrp = hrp_model.compute_performance_metrics(hrp_ret)
+        met_eq  = hrp_model.compute_performance_metrics(eq_ret)
+        met_bm  = hrp_model.compute_performance_metrics(bm_ret)
+        df = pd.DataFrame({'HRP': met_hrp, 'Equal Weight': met_eq, 'Benchmark': met_bm})
+        df.reset_index(inplace=True); df.rename(columns={'index':'Metric'}, inplace=True)
+        return df
+
+    # Render optimization status
+    @output
+    @render.ui
+    @reactive.event(input.optimize)
+    def opt_status():
+        return ui.p(opt_status_msg())
+
+    # Bayesian Optimization with seed, constraint, callback
+    @reactive.Calc
+    @reactive.event(input.optimize)
+    def optimize():
+        total_trials = 50
+        # configure deterministic sampler
+        sampler = optuna.samplers.TPESampler(seed=42)
+        study = optuna.create_study(direction='maximize', sampler=sampler)
+        
+        def callback(study, trial):
+            current = trial.number + 1
+            best = study.best_value
+            opt_status_msg.set(f'Trial {current}/{total_trials}: Best Sharpe {best:.2f}')
+        
+        def objective(trial):
+            method    = trial.suggest_categorical('method', ['single','complete','average','ward'])
+            window    = trial.suggest_int('window', 120, 200)
+            rebalance = trial.suggest_int('rebalance', 5, 63)
+            w = pd.DataFrame(np.nan,index=rets().index, columns=rets().columns,dtype=float)
+            for i in range(window, len(rets()), rebalance):
+                train = rets().iloc[i-window:i]
+                w.iloc[i] = hrp_model.hrp_allocation(train, method=method)
+            w.ffill(inplace=True)
+            hrp_ret = (w.shift(1) * rets()).sum(axis=1)
+            s_hrp = hrp_model.compute_performance_metrics(hrp_ret)['Sharpe Ratio']
+            s_eq  = hrp_model.compute_performance_metrics(hrp_model.equal_weight_returns(rets()))['Sharpe Ratio']
+            s_bm  = hrp_model.compute_performance_metrics(hrp_model.benchmark_returns(rets()))['Sharpe Ratio']
+            return s_hrp if (s_hrp > s_eq and s_hrp > s_bm) else -1e3
+        
+        opt_status_msg.set('Starting Bayesian optimization...')
+        study.optimize(objective, n_trials=total_trials, callbacks=[callback])
+        params, value = study.best_params, study.best_value
+        opt_status_msg.set(f'Done! Best Sharpe: {value:.2f}')
+        df = pd.DataFrame({
+            'Parameter': list(params.keys()) + ['Sharpe HRP'],
+            'Value':     list(params.values()) + [value]
+        })
         return df
 
     @output
     @render.table
-    def calibration_table():
-        return calibration_results()
-
-    def get_hrp_runner():
-        base = base_results()
-        # 1) read dropdowns; they return either None or a str
-        reb = input.chosen_rebalance()
-        lin = input.chosen_linkage()
-
-        # 2) if still None, fall back to calibration
-        best = best_calib.get()
-        if reb is None and best is not None:
-            reb = best["Rebalance"]
-        if lin is None and best is not None:
-            lin = best["Linkage"]
-
-        # 3) build kwargs only when we have valid strings
-        kwargs = {}
-        if isinstance(reb, str):
-            kwargs["rebalance_freq"] = reb
-        if isinstance(lin, str):
-            kwargs["linkage_method"] = lin
-
-        return run_hrp_full(
-            list(base["prices"].columns),
-            base["prices"].index[0].strftime("%Y-%m-%d"),
-            base["prices"].index[-1].strftime("%Y-%m-%d"),
-            **kwargs
+    @reactive.event(input.optimize)
+    def opt_table():
+        return optimize()
+    
+    # Walk-forward validation table
+    @output
+    @render.table
+    @reactive.event(input.run)
+    def wf_table():
+        returns   = rets()
+        method    = input.link_method()
+        window    = input.window()
+        rebalance = input.rebalance()
+        return hrp_model.walk_forward_validate(
+            returns, method, window, rebalance,
+            train_years=10, test_years=1
         )
 
-    @output
-    @render.table
-    def info_prices():
-        df = base_results()["prices"].copy()
-        df = df.reset_index()
-        df.rename(columns={df.columns[0]: "Date"}, inplace=True)
-        df.index.name = None
-        return df.head()
-
-
-
+    # Sensitivity heatmap plot
     @output
     @render.plot
-    def price_plot():
+    @reactive.event(input.run)
+    def sens_plot():
+        returns   = rets()
+        method    = input.link_method()
+        window    = input.window()
+        rebalance = input.rebalance()
+        sens = hrp_model.sensitivity_analysis(
+            returns, method, window, rebalance,
+            window_tol=20, rebalance_tol=3
+        )
         fig, ax = plt.subplots()
-        t = input.focus_ticker().strip().upper()
-        base_results()["prices"][t].plot(ax=ax, title=f"{t} Close Price")
+        cax = ax.matshow(sens.values, aspect='auto', vmin=sens.values.min(), vmax=sens.values.max())
+        fig.colorbar(cax, ax=ax)
+        ax.set_xticks(range(len(sens.columns)))
+        ax.set_xticklabels(sens.columns, rotation=90)
+        ax.set_yticks(range(len(sens.index)))
+        ax.set_yticklabels(sens.index)
+        ax.set_xlabel('Rebalance (days)')
+        ax.set_ylabel('Window (days)')
+        ax.set_title('Sharpe Sensitivity Heatmap')
+        plt.tight_layout()
         return fig
 
-    @output
-    @render.plot
-    def log_return_plot():
-        fig, ax = plt.subplots()
-        t = input.focus_ticker().strip().upper()
-        base_results()["returns"][t].plot(ax=ax, title=f"{t} Log Returns")
-        return fig
-
-    @output
-    @render.plot
-    def corr_heatmap():
-        import seaborn as sns
-        fig, ax = plt.subplots(figsize=(10,10))
-        sns.heatmap(base_results()["corr"], annot=True, fmt=".2f",
-                    cmap="coolwarm", square=True, ax=ax)
-        ax.set_title("Correlation Matrix")
-        return fig
-
-    @output
-    @render.plot
-    def dist_heatmap():
-        import seaborn as sns
-        fig, ax = plt.subplots(figsize=(10,10))
-        sns.heatmap(base_results()["dist"], annot=True, fmt=".2f",
-                    cmap="viridis", square=True, ax=ax)
-        ax.set_title("Distance Matrix")
-        return fig
-
-    @output
-    @render.plot
-    def dendro_plot():
-        return base_results()["dendrogram"]
-
-    @output
-    @render.table
-    def weights_table():
-        w = get_hrp_runner()["weights"]
-        return pd.DataFrame({"Asset": w.index, "Weight": w.values}).round(4)
-
-    @output
-    @render.plot
-    def cumulative_plot():
-        hrp = get_hrp_runner()
-        fig, ax = plt.subplots(figsize=(10,5))
-        hrp["cumulative"].plot(ax=ax, label="HRP Portfolio", lw=2)
-        hrp["benchmark"].plot(ax=ax, label="SPY Benchmark", lw=2, linestyle="--")
-        ax.set_title("Cumulative Returns: HRP vs SPY")
-        ax.legend()
-        return fig
-
-    @output
-    @render.table
-    def metric_table():
-        m = get_hrp_runner()["metrics"]
-        df = pd.DataFrame(m, index=["Value"]).T.round(4)
-        df.index.name = "Metric"
-        return df.reset_index()
-
+# ---- App ----
 app = App(app_ui, server)
