@@ -3,9 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-# === Load data ===
-returns_df = pd.read_csv("cumulative_returns.csv", index_col=0, parse_dates=True)
-metrics_df = pd.read_csv("mvo_model_comparison_table.csv", index_col=0)
+# === Load updated data ===
+returns_df = pd.read_csv("cumulative_returns (1).csv", index_col=0, parse_dates=True)
+metrics_df = pd.read_csv("final_metrics_table.csv", index_col=0)
 prices_df = pd.read_csv("prices.csv", index_col=0, parse_dates=True)
 
 returns_matrix = prices_df.pct_change().dropna()
@@ -28,11 +28,11 @@ app_ui = ui.page_fluid(
                         "model_choices",
                         "Select Portfolios/ETFs to Plot",
                         choices=list(returns_df.columns),
-                        selected=["MVO-RMT (OOS)", "RMT λ₊ Base (OOS)", "RMT λ₊ High (OOS)"]
+                        selected=list(returns_df.columns[:4])
                     ),
                     ui.input_slider(
                         "lambda_slider",
-                        "RMT λ₊ Sensitivity (Live Line)",
+                        "RMT λ₊ Sensitivity (Live Overlay)",
                         min=0.8, max=2.0, value=1.0, step=0.1
                     )
                 )
@@ -75,7 +75,6 @@ def server(input, output, session):
             if col in df.columns:
                 plt.plot(df[col], label=col)
 
-        # Optional Live Line
         lambda_val = input.lambda_slider()
         if "RMT λ₊ Live" not in df.columns:
             live_curve = df.mean(axis=1) * lambda_val / 2
@@ -118,10 +117,8 @@ def server(input, output, session):
         else:
             df = metrics_df.copy()
 
-        df.index.name = "Metric"  # <- ensures metric names show as row titles
+        df.index.name = "Metric"
         return df
 
 # === Run App ===
 app = App(app_ui, server)
-
-
