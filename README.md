@@ -2,6 +2,12 @@
 Team Name: Quant Crusaders  
 Team Members: Ge Meng, Xiaomeng Ren, Fatma Soliman, Ziqian Zhang
 
+## Model Assignment:
+- Fatma Soliman- Mean Variance Model
+- Xiaomeng Ren - Black-Litterman Model
+- Ziqian Zhang - Hierarchical Risk Parity Model
+- Ge Meng - CVaR Portfolio Model
+
 ## A Small Note of Running Black-Litterman's Dashboard (Xiaomeng Ren)
 My dashboard is the folder called "CapstoneQWIM_BlackLitterman", I run it by the following steps in terminal by VScode:
 1. cd to the dashboard-QWIM under "CapstoneQWIM_BlackLitterman" folder.
