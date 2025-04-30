@@ -1,0 +1,110 @@
+Metadata-Version: 2.1
+Name: elasticgraph
+Version: 0.2.0
+Summary: Network Graph using D3js with grouping of nodes and elastic edges.
+Home-page: https://gitlab.com/rwsdatalab/rwsdatalab/public/codebase/tools/elasticgraph
+Author: RWS Datalab
+Author-email: datalab.codebase@rws.nl
+License: UNKNOWN
+Keywords: elasticgraph
+Platform: UNKNOWN
+Classifier: Development Status :: 2 - Pre-Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Natural Language :: English
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: License :: OSI Approved
+License-File: LICENSE
+License-File: NOTICE
+Requires-Dist: jinja2
+Requires-Dist: d3graph
+
+##############
+Elasticgraph
+##############
+
+.. begin-inclusion-intro-marker-do-not-remove
+
+Force Graph using D3js.
+
+.. end-inclusion-intro-marker-do-not-remove
+
+
+.. begin-inclusion-usage-marker-do-not-remove
+
+How to use
+----------
+
+.. code-block:: python
+
+  from elasticgraph import Elasticgraph
+
+  # Initialize
+  d3 = Elasticgraph()
+
+  # Load karate example
+  adjmat, _ = d3.import_example('karate')
+
+  # Initialize
+  d3.graph(adjmat)
+
+  # Plot
+  d3.show()
+
+
+
+.. end-inclusion-usage-marker-do-not-remove
+
+
+.. begin-inclusion-installation-marker-do-not-remove
+
+Installation
+------------
+
+To install elasticgraph, do:
+
+.. code-block:: console
+
+  pip install elasticgraph
+
+
+To install elasticgraph from Gitlab source, do:
+
+.. code-block:: console
+
+  git clone https://gitlab.com/rwsdatalab/public/codebase/tools/elasticgraph.git
+  cd elasticgraph
+  pip install .
+
+Run tests (including coverage) with:
+
+.. code-block:: console
+
+  pip install -r requirements-dev.txt
+  python setup.py test
+
+.. end-inclusion-installation-marker-do-not-remove
+
+
+Documentation
+-------------
+
+Include a link to your project's full documentation here.
+
+
+.. begin-inclusion-license-marker-do-not-remove
+
+License
+-------
+
+Copyright (c) 2022, Rijkswaterstaat
+
+
+
+.. end-inclusion-license-marker-do-not-remove
+
+
+
+

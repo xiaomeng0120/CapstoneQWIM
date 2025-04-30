@@ -1,0 +1,51 @@
+2025-04-14 15:44:28,620 - numexpr.utils - INFO - Note: NumExpr detected 10 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-04-14 15:44:28,620 - numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+2025-04-14 15:44:52,363 - numexpr.utils - INFO - Note: NumExpr detected 10 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-04-14 15:44:52,363 - numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+2025-04-14 15:46:47,390 - numexpr.utils - INFO - Note: NumExpr detected 10 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-04-14 15:46:47,391 - numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+2025-04-14 16:06:51,699 - numexpr.utils - INFO - Note: NumExpr detected 10 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-04-14 16:06:51,700 - numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+2025-04-14 16:20:19,947 - numexpr.utils - INFO - Note: NumExpr detected 10 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-04-14 16:20:19,947 - numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+2025-04-14 16:26:37,598 - numexpr.utils - INFO - Note: NumExpr detected 10 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-04-14 16:26:37,599 - numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+2025-04-14 16:26:45,918 - matplotlib.font_manager - WARNING - Matplotlib is building the font cache; this may take a moment.
+2025-04-14 16:26:58,044 - matplotlib.font_manager - INFO - Failed to extract font properties from /System/Library/PrivateFrameworks/FontServices.framework/Resources/Reserved/PingFangUI.ttc: Can not load face (locations (loca) table missing; error code 0x90)
+2025-04-14 16:26:58,061 - matplotlib.font_manager - INFO - Failed to extract font properties from /System/Library/Fonts/LastResort.otf: tuple indices must be integers or slices, not str
+2025-04-14 16:26:58,074 - matplotlib.font_manager - INFO - Failed to extract font properties from /System/Library/Fonts/Apple Color Emoji.ttc: Could not set the fontsize (invalid pixel size; error code 0x17)
+2025-04-14 16:26:58,175 - matplotlib.font_manager - INFO - Failed to extract font properties from /System/Library/Fonts/Supplemental/NISC18030.ttf: Could not set the fontsize (invalid pixel size; error code 0x17)
+2025-04-14 16:26:58,193 - matplotlib.font_manager - INFO - generated new fontManager
+2025-04-14 16:34:01,430 - numexpr.utils - INFO - Note: NumExpr detected 10 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-04-14 16:34:01,430 - numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+2025-04-14 17:06:49,851 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:08:35,101 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:11:24,130 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:13:16,324 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:29:35,898 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:32:36,491 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:33:13,602 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:39:54,701 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:40:44,689 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:51:38,534 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:52:51,053 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 17:58:39,069 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 19:03:55,241 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 20:00:44,444 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 20:06:12,239 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 20:06:37,300 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 20:06:43,340 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 20:15:22,352 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 20:16:02,131 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 20:17:08,916 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 20:17:16,751 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 21:47:59,309 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 21:50:55,184 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 21:53:06,729 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 21:56:37,177 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 21:58:51,991 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 22:12:52,818 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 22:22:45,256 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 22:25:03,013 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 22:25:25,209 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.
+2025-04-14 22:27:18,308 - numexpr.utils - INFO - NumExpr defaulting to 10 threads.

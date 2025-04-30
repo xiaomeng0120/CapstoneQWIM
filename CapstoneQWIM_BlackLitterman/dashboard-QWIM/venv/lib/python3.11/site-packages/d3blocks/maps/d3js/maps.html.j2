@@ -1,0 +1,242 @@
+<!--
+Library     : d3blocks
+Github      : https://github.com/d3blocks/d3blocks
+Licensed    : GPL3
+Forked      : Mike Bostock; https://d3-graph-gallery.com/graph/bubblemap_template.html
+-->
+<!DOCTYPE html>
+<meta charset="utf-8">
+<head>
+    <!-- Load d3.js -->
+    <!-- <script src="https://d3js.org/d3.v6.js"></script> -->
+    <script> {% include "d3.v6.min.js" %} </script>
+    
+	{{ SUPPORT }}
+
+</head>
+
+<!-- Create save button -->
+{{ SAVE_BUTTON_START }}
+    <div style="max-width:{{ WIDTH }}px;">
+        <center><button id="saveButton">Save</button></center>
+    </div>
+{{ SAVE_BUTTON_STOP }}
+
+
+<!-- Create an element where the map will take place -->
+<!-- <svg id="my_dataviz" width="1630" height="2350"></svg> -->
+<svg id="my_dataviz"></svg>
+
+<script>
+
+
+// The svg
+const svg = d3.select("svg"),
+    width = window.innerWidth * 0.9,
+    height = window.innerHeight  * 0.9;
+
+    const dataGeo = {% include "world.geojson" %}
+    const data = {{ json_data }}
+    const data_countries = {{ json_countries }}
+
+
+// Create a color map from the data_countries array
+let country_color = {};
+let country_linewidth = {};
+let country_opacity = {};
+let country_line = {};
+let country_stroke = {};
+
+data_countries.forEach(item => {
+  country_color[item.name] = item.color;
+  country_line[item.name] = item.line;
+  country_linewidth[item.name] = item.linewidth;
+  country_opacity[item.name] = item.opacity;
+  country_stroke[item.name] = item.stroke;
+});
+
+//	console.log(data)
+let bounds = d3.geoBounds(dataGeo);
+
+// Calculate the center of France
+let center = [
+  (bounds[0][0] + bounds[1][0]) / 2,
+  (bounds[0][1] + bounds[1][1]) / 2
+];
+
+    // Set the width and height of the SVG
+svg.attr("width", width)
+   .attr("height", height);
+
+// Map and projection
+const projection = d3.geoMercator()
+    .center([0,20])                // GPS of location to zoom on
+//    .center(center)                // GPS of location to zoom on
+    .scale(200)                       // This is like the zoom
+    .translate([ width/2, height/2 ])
+
+  // Create a color scale
+  const color = d3.scaleOrdinal()
+    .domain(data.map(d => d.name))
+    .range(d3.schemePaired);
+
+  // Add a scale for bubble size
+  const valueExtent = d3.extent(data, d => +d.size)
+  const size = d3.scaleSqrt()
+    .domain(valueExtent)  // What's in the data
+    .range([ 1, 50])  // Size in pixel
+
+  // Draw the entire map
+  svg.append("g")
+      .selectAll("path")
+      .data(dataGeo.features)
+      .join("path")
+        .attr("fill", country_color['World'])
+        .attr("d", d3.geoPath().projection(projection) )
+      .style("stroke", country_stroke['World'])
+      .style("opacity", country_opacity['World'])
+      .style("stroke-dasharray", country_line['World'] === 'dashed' ? "5" : "0");
+
+
+// Get all country names
+const country_names = data_countries.map(item => item.name);
+// Get the geo features for the overlapping country names (to prevent error when having typos)
+let countries = dataGeo.features.filter(d => country_names.includes(d.properties.name));
+
+
+// Create a geoPath generator
+let pathGenerator = d3.geoPath().projection(projection);
+// Create a dashed line for each country
+countries.forEach(country => {
+  svg.append("path")
+    .attr("d", pathGenerator(country))
+    .attr("fill", country_color[country.properties.name]) // Use the color from country_color
+    .attr("stroke", country_stroke[country.properties.name])
+    .attr("stroke-width", country_linewidth[country.properties.name]) // Use the linewidth from country_linewidth
+    .attr("opacity", country_opacity[country.properties.name]) // Use the opacity from country_opacity
+    //.attr("stroke-dasharray", "5,5");  // This creates a dashed line
+    .attr("stroke-dasharray", country_line[country.properties.name] === 'dashed' ? "5" : "0");
+
+});
+
+
+
+    // Define the zoom behavior
+    const zoom = d3.zoom()
+    .scaleExtent([1, 100]) // This control how much you can unzoom (x1) and zoom (x100)
+    .on("zoom", function(event) {
+        svg.selectAll('path') // To prevent stroke width from scaling
+           .attr('transform', event.transform);
+        svg.selectAll('circle')
+           .attr('transform', event.transform);
+    });
+
+  // Apply the zoom behavior to the svg
+  svg.call(zoom);
+
+
+    // create a tooltip
+    const Tooltip = d3.select("body")
+      .append("div")
+      .attr("class", "tooltip")
+      .style("opacity", 0.5)
+      .style("background-color", "white")
+      .style("border", "solid")
+      .style("border-width", "2px")
+      .style("border-radius", "5px")
+      .style("padding", "5px")
+      .style("position", "absolute");
+
+    // Three function that change the tooltip when user hover / move / leave a cell
+    const mouseover = function(event, d) { Tooltip.style("opacity", 1) }
+    var mousemove = function(event, d) {
+      Tooltip
+        .html(d.label + "<br>" + "long: " + d.lon + "<br>" + "lat: " + d.lat)
+        .style("left", (event.x) + "px")
+        .style("top", (event.y) + "px")
+    }
+    var mouseleave = function(event, d) { Tooltip.style("opacity", 0) }
+
+  // Add circles:
+  svg
+    .selectAll("myCircles")
+    .data(data.sort((a,b) => +b.size - +a.size))
+    .join("circle")
+      .attr("cx", d => projection([+d.lon, +d.lat])[0])
+      .attr("cy", d => projection([+d.lon, +d.lat])[1])
+      .attr("r", d => size(+d.size))
+      //.style("fill", d => color(d.label))
+      .style("fill", d => d.color)
+      .attr("stroke", d=> {if (d.size>2000) {return "black"} else {return "none"}  })
+      .attr("stroke-width", 1)
+      .attr("fill-opacity", .4)
+      .on("mouseover", mouseover)
+      .on("mousemove", mousemove)
+      .on("mouseleave", mouseleave)
+
+
+
+  // Add title and explanation
+//  svg
+//    .append("text")
+//      .attr("text-anchor", "end")
+//      .style("fill", "black")
+//      .attr("x", width - 10)
+//      .attr("y", height - 30)
+//      .attr("width", 90)
+//      .html("WHERE SURFERS LIVE")
+//      .style("font-size", 14)
+
+
+  // --------------- //
+  // ADD LEGEND //
+  // --------------- //
+
+// Add legend: circles
+// Get the min, mean, and max values of 'size' in the data
+const nExtent = d3.extent(data, d => +d.size);
+const nMean = d3.mean(data, d => +d.size);
+
+// Create an array with these values
+const valuesToShow = [nExtent[0], nMean, nExtent[1]];
+//const valuesToShow = [100,4000,15000]
+const xCircle = 40
+const xLabel = 90
+svg
+  .selectAll("legend")
+  .data(valuesToShow)
+  .join("circle")
+    .attr("cx", xCircle)
+    .attr("cy", d => height - 100)
+    .attr("r", d => size(Math.sqrt(d)))
+    .style("fill", "none")
+    .attr("stroke", "black")
+
+// Add legend: segments
+svg
+  .selectAll("legend")
+  .data(valuesToShow)
+  .join("line")
+    .attr('x1', d => xCircle + size(Math.sqrt(d)))
+    .attr('x2', xLabel)
+    .attr('y1', (d, i) =>  height - 100 + size(Math.sqrt(d))) // separate segments by 30 pixels
+    .attr('y2', (d, i) =>  height - 100 + size(Math.sqrt(d))) // separate segments by 30 pixels
+    .attr('stroke', 'black')
+    .style('stroke-dasharray', ('2,2'))
+
+// Add legend: labels
+svg
+  .selectAll("legend")
+  .data(valuesToShow)
+  .join("text")
+    .attr('x', xLabel)
+    .attr('y', (d, i) =>  height - 100 + size(Math.sqrt(d))) // separate labels by 30 pixels
+    .text(d => d.toFixed(1)) // round the legend value on 1 decimal
+    .style("font-size", 10)
+    .attr('alignment-baseline', 'middle')
+
+
+{{ SAVE_TO_SVG_SCRIPT }}
+
+</script>
+
