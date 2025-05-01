@@ -1160,7 +1160,7 @@ def model1_server(input, output, session, data_r, series_names_r):
         data = {
             "View Name": [
                 "A: Growth", "B: Defensive", "C: Small-cap", "D: Inflation-style",
-                "E: Balanced (Recommended)", "F: Value-style", "G: Growth + MOM Tilt"
+                "E: Balanced", "F: Value-style", "G: Growth + MOM Tilt (Recommended)"
             ],
             "Factor Exposure (P_f)": [
                 "MKT↑, MOM↑, HML↓", "MKT↓, MOM↓, RMW↑", "SMB↑, MOM↓", "HML↑, CMA↑, MOM↓",
